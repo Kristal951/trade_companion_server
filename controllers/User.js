@@ -21,7 +21,7 @@ export const SignUpUser = async (req, res) => {
         error: "You must be at least 18 years old to register",
       });
     }
-    const existingUser = await User.findOne({ email });
+    const existingUser = await UserModel.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
         error: "Email already in use, please use another email.",

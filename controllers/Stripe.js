@@ -1,5 +1,5 @@
 import stripePackage from "stripe";
-import UserModel from "../models/User.js"; // adjust path if needed
+import UserModel from "../models/User.js"; 
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 
