@@ -11,7 +11,6 @@ export const SignUpUser = async (req, res) => {
   try {
     const { name, email, password, age } = req.body;
      const type = 'user'
-    // Todo: implement user Type
     if (!name || !email || !password || !age || !type) {
       console.log("err");
       return res.status(400).json({ error: "All fields are required" });
@@ -95,7 +94,7 @@ export const SignUpUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Error during user registration:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: `${error}` });
   }
 };
 
