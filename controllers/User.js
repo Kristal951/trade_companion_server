@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs"; // or 'bcrypt' if using native
-import { UserModel } from "../models/User.js";
+import UserModel from "../models/User.js";
 import {
   generateVerificationToken,
   sendVerificationEmail,
