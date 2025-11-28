@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs"; // or 'bcrypt' if using native
-import { User, RegularUser } from "../models/User.js";
+import { UserModel } from "../models/User.js";
 import {
   generateVerificationToken,
   sendVerificationEmail,
@@ -49,14 +49,15 @@ export const SignUpUser = async (req, res) => {
         age,
       });
     } else {
-      newUser = new RegularUser({
+      newUser = new UserModel({
         name,
         email,
-        image,
+        avatar: image,
         emailVerified: false,
         IsGoogle: false,
         password: hashedPassword,
         age,
+        isMentor: false,
       });
     }
 

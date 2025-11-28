@@ -21,6 +21,10 @@ const UserSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     avatar: { type: String },
+    emailVerified: {type: Boolean},
+    password: {type: String},
+    age: {type: Number},
+    isGoogle: {type: Boolean},
     telegramNumber: { type: String },
     subscribedPlan: {
       type: String,
