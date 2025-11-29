@@ -10,16 +10,11 @@ import jwt from "jsonwebtoken";
 export const SignUpUser = async (req, res) => {
   try {
     const { name, email, password, age } = req.body;
-     const type = 'user'
+    console.log(name, email, password, age)
+    const type = 'user'
     if (!name || !email || !password || !age || !type) {
       console.log("err");
       return res.status(400).json({ error: "All fields are required" });
-    }
-
-    if (age < 18) {
-      return res.status(400).json({
-        error: "You must be at least 18 years old to register",
-      });
     }
     const existingUser = await UserModel.findOne({ email });
     if (existingUser) {
@@ -35,6 +30,7 @@ export const SignUpUser = async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    console.log(hashedPassword)
 
     let newUser;
 
@@ -59,6 +55,7 @@ export const SignUpUser = async (req, res) => {
         age,
         isMentor: false,
       });
+      console.log(newUser)
     }
 
     await newUser.save();
@@ -94,7 +91,7 @@ export const SignUpUser = async (req, res) => {
       user: safeUser,
     });
   } catch (error) {
-    console.error("Error during user registration:", error);
+    console.log("Error during user registration:", error);
     res.status(500).json({ error: `${error}` });
   }
 };
