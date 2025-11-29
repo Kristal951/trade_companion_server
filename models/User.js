@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
 
 const PlanName = {
-  FREE: "FREE",
-  BASIC: "BASIC",
-  PREMIUM: "PREMIUM",
+  FREE: "Free",
+  BASIC: "Basic",
+  PRO: "Pro",
+  PREMIUM: "Premium",
 };
 
 const CTraderSchema = new mongoose.Schema(

@@ -10,7 +10,6 @@ import jwt from "jsonwebtoken";
 export const SignUpUser = async (req, res) => {
   try {
     const { name, email, password, age } = req.body;
-    console.log(name, email, password, age);
     const type = "user";
     if (!name || !email || !password || !age || !type) {
       console.log("err");
@@ -30,7 +29,6 @@ export const SignUpUser = async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    console.log(hashedPassword);
 
     let newUser;
 
@@ -55,7 +53,6 @@ export const SignUpUser = async (req, res) => {
         age,
         isMentor: false,
       });
-      console.log(newUser);
     }
 
     await newUser.save();
