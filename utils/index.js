@@ -24,15 +24,18 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
       .replace(/{{YEAR}}/g, new Date().getFullYear())
       .replace(/{{APP_NAME}}/g, "Trade Companion");
 
-    await transporter.sendMail({
-      from: `"Trade Companion" <tradecompanion001@gmail.com>`,
-      to,
-      subject: "Your Trade Companion Verification Code",
-      html,
-    });
+    try {
+      await transporter.sendMail({
+        from: `"Trade Companion" <tradecompanion001@gmail.com>`,
+        to,
+        subject: "Your Trade Companion Verification Code",
+        html,
+      });
+    } catch (error) {
+      console.log("email error", error);
+    }
 
     console.log("Verification email sent successfully.");
-
   } catch (err) {
     console.error("Verification email failed:", err.message);
   }
@@ -44,5 +47,5 @@ export const verifyGoogleToken = async (token) => {
     idToken: token,
     audience: process.env.GOOGLE_CLIENT_ID,
   });
-  return ticket.getPayload(); 
+  return ticket.getPayload();
 };

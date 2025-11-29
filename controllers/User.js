@@ -10,8 +10,8 @@ import jwt from "jsonwebtoken";
 export const SignUpUser = async (req, res) => {
   try {
     const { name, email, password, age } = req.body;
-    console.log(name, email, password, age)
-    const type = 'user'
+    console.log(name, email, password, age);
+    const type = "user";
     if (!name || !email || !password || !age || !type) {
       console.log("err");
       return res.status(400).json({ error: "All fields are required" });
@@ -30,7 +30,7 @@ export const SignUpUser = async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    console.log(hashedPassword)
+    console.log(hashedPassword);
 
     let newUser;
 
@@ -55,7 +55,7 @@ export const SignUpUser = async (req, res) => {
         age,
         isMentor: false,
       });
-      console.log(newUser)
+      console.log(newUser);
     }
 
     await newUser.save();
@@ -66,7 +66,7 @@ export const SignUpUser = async (req, res) => {
       userID: newUser._id.toString(),
     });
 
-   try {
+    try {
       await sendVerificationEmail({ to: email, name, code });
     } catch (emailError) {
       console.log("Email sending failed:", emailError.message);
@@ -75,8 +75,9 @@ export const SignUpUser = async (req, res) => {
     res.cookie("tradecompanion_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 1000, // 1 hour
-      sameSite: "strict",
+      maxAge: 60 * 60 * 1000,
+      sameSite: "none",
+      secure: true,
     });
 
     const safeUser = {
@@ -91,7 +92,7 @@ export const SignUpUser = async (req, res) => {
     };
 
     res.status(201).json({
-     success: true,
+      success: true,
       user: safeUser,
     });
   } catch (error) {
@@ -266,7 +267,7 @@ export const LogoutUser = async (req, res) => {
   try {
     res.clearCookie("tradecompanion_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", 
+      secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
     });
 
