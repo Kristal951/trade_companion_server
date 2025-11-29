@@ -84,11 +84,11 @@ export const SignUpUser = async (req, res) => {
       _id: newUser._id,
       name: newUser.name,
       email: newUser.email,
-      image: newUser.image,
+      image: newUser.avatar,
       age: newUser.age,
-      type: newUser.type,
+      mentor: newUser.isMentor,
       emailVerified: newUser.emailVerified,
-      plan: newUser.plan,
+      plan: newUser.subscribedPlan,
     };
 
     res.status(201).json({
