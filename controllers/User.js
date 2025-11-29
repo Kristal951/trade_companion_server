@@ -66,7 +66,11 @@ export const SignUpUser = async (req, res) => {
       userID: newUser._id.toString(),
     });
 
-    await sendVerificationEmail({ to: email, name, code });
+   try {
+      await sendVerificationEmail({ to: email, name, code });
+    } catch (emailError) {
+      console.log("Email sending failed:", emailError.message);
+    }
 
     res.cookie("tradecompanion_token", token, {
       httpOnly: true,

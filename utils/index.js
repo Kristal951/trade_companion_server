@@ -15,19 +15,27 @@ export function generateVerificationToken({ email, code, userID }) {
 }
 
 export const sendVerificationEmail = async ({ to, name, code }) => {
-  console.log(to, name, code);
-  const html = emailVerificationtemplate
-    .replace(/{{NAME}}/g, name)
-    .replace(/{{CODE}}/g, code)
-    .replace(/{{YEAR}}/g, new Date().getFullYear())
-    .replace(/{{APP_NAME}}/g, "Trade Companion");
+  console.log("Sending email to:", to, name, code);
 
-  await transporter.sendMail({
-    from: `"Trade Companion" <tradecompanion001@gmail.com>`,
-    to,
-    subject: "Your Trade Companion Verification Code",
-    html,
-  });
+  try {
+    const html = emailVerificationtemplate
+      .replace(/{{NAME}}/g, name)
+      .replace(/{{CODE}}/g, code)
+      .replace(/{{YEAR}}/g, new Date().getFullYear())
+      .replace(/{{APP_NAME}}/g, "Trade Companion");
+
+    await transporter.sendMail({
+      from: `"Trade Companion" <tradecompanion001@gmail.com>`,
+      to,
+      subject: "Your Trade Companion Verification Code",
+      html,
+    });
+
+    console.log("Verification email sent successfully.");
+
+  } catch (err) {
+    console.error("Verification email failed:", err.message);
+  }
 };
 
 export const verifyGoogleToken = async (token) => {
