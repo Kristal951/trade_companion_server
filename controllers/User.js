@@ -148,21 +148,21 @@ export const LoginUser = async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({ email }).select("+password");
+    const user = await UserModel.findOne({ email }).select("+password");
 
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    if (!user.emailVerified) {
-      return res.status(403).json({ message: "Email not verified" });
-    }
+    // if (!user.emailVerified) {
+    //   return res.status(403).json({ message: "Email not verified" });
+    // }
 
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET is not defined");
@@ -178,7 +178,7 @@ export const LoginUser = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 1000,
-      sameSite: "strict",
+      sameSite: "none",
     });
 
     const { password: _, ...userData } = user.toObject();
