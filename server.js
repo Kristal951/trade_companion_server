@@ -13,7 +13,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URI,
 ].filter(Boolean);
-console.log(process.env.FRONTEND_URI)
+console.log(process.env.FRONTEND_URI);
 
 const connectDB = async () => {
   try {
@@ -32,11 +32,11 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      if (!origin) return callback(null, true); // allow non-browser requests
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
       }
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
