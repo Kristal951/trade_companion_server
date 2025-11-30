@@ -38,7 +38,7 @@ export const SignUpUser = async (req, res) => {
         email,
         image,
         emailVerified: false,
-        IsGoogle: false,
+        isGoogle: false,
         password: hashedPassword,
         age,
       });
@@ -48,7 +48,7 @@ export const SignUpUser = async (req, res) => {
         email,
         avatar: image,
         emailVerified: false,
-        IsGoogle: false,
+        isGoogle: false,
         password: hashedPassword,
         age,
         isMentor: false,
@@ -212,14 +212,14 @@ export const SignInUserWithGoogle = async (req, res) => {
       res.status(400).json({ message: "Google email not verified" });
     }
 
-    let user = await User.findOne({ email });
+    let user = await UserModel.findOne({ email });
 
     if (!user) {
       const hashedPassword = await bcrypt.hash(sub, 10);
       user = new UserModel({
         name,
         email,
-        IsGoogle: true,
+        isGoogle: true,
         image:
           picture ||
           `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -230,7 +230,7 @@ export const SignInUserWithGoogle = async (req, res) => {
         emailVerified: email_verified,
       });
       await user.save();
-    } else if (!user.IsGoogle) {
+    } else if (!user.isGoogle) {
       return res.status(400).json({
         message: "This email is already registered with a different method",
       });
