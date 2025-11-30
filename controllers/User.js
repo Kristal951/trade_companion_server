@@ -119,7 +119,7 @@ export const verify_email_code = async (req, res) => {
       return res.status(400).json({ error: "Invalid verification code" });
     }
 
-    const user = await User.findByIdAndUpdate(payload.userID, {
+    const user = await UserModel.findByIdAndUpdate(payload.userID, {
       emailVerified: true,
     });
     res.clearCookie("tradecompanion_token");
@@ -216,7 +216,7 @@ export const SignInUserWithGoogle = async (req, res) => {
 
     if (!user) {
       const hashedPassword = await bcrypt.hash(sub, 10);
-      user = new User({
+      user = new UserModel({
         name,
         email,
         IsGoogle: true,
