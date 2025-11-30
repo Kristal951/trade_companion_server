@@ -228,6 +228,7 @@ export const SignInUserWithGoogle = async (req, res) => {
         password: hashedPassword,
         age: 18,
         emailVerified: email_verified,
+        isMentor: false,
       });
       await user.save();
     } else if (!user.isGoogle) {
