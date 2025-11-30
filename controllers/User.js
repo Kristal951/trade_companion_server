@@ -232,7 +232,7 @@ export const SignInUserWithGoogle = async (req, res) => {
       await user.save();
     } else if (!user.isGoogle) {
       return res.status(400).json({
-        message: "This email is already registered with a different method",
+        message: "This email is already registered with a different method, trying sign in with Google.",
       });
     }
     const jwtToken = jwt.sign(
