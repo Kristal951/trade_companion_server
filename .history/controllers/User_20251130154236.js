@@ -139,7 +139,7 @@ export const verify_email_code = async (req, res) => {
 };
 export const LoginUser = async (req, res) => {
   const { email, password } = req.body;
-  console.log(password)
+  clg
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
@@ -153,7 +153,6 @@ export const LoginUser = async (req, res) => {
     }
 
     const isPasswordValid = bcrypt.compare(password, user.password);
-    console.log(isPasswordValid)
 
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid email or password" });
