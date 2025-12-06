@@ -285,3 +285,16 @@ export const LogoutUser = async (req, res) => {
     });
   }
 };
+
+export const updateUser = async (req, res) => {
+  try {
+    const { userId, updates } = req.body; 
+    const updatedUser = await UserModel.findByIdAndUpdate(userId, updates, {
+      new: true,
+    });
+    return res.status(200).json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Update failed" });
+  }
+};
