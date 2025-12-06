@@ -13,6 +13,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URI_1,
   process.env.FRONTEND_URI_2,
+  process.env.FRONTEND_URI_3,
 ].filter(Boolean);
 console.log(process.env.FRONTEND_URI);
 
