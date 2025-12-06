@@ -205,8 +205,8 @@ export const SignInUserWithGoogle = async (req, res) => {
     if (!payload) {
       return res.status(401).json({ message: "Invalid Google token" });
     }
-
     const { email, name, email_verified, sub, picture } = payload;
+    console.log(picture)
 
     if (!email_verified) {
       res.status(400).json({ message: "Google email not verified" });
@@ -220,7 +220,7 @@ export const SignInUserWithGoogle = async (req, res) => {
         name,
         email,
         isGoogle: true,
-        image:
+        avatar:
           picture ||
           `https://ui-avatars.com/api/?name=${encodeURIComponent(
             name
@@ -242,6 +242,7 @@ export const SignInUserWithGoogle = async (req, res) => {
       { expiresIn: "1h" }
     );
 
+    console.log(user.avatar)
     res.cookie("tradecompanion_token", jwtToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
