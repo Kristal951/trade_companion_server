@@ -179,6 +179,7 @@ export const LoginUser = async (req, res) => {
       maxAge: 60 * 60 * 1000,
       sameSite: "none",
     });
+    console.log(token)
 
     const { password: _, ...userData } = user.toObject();
 
@@ -288,17 +289,9 @@ export const LogoutUser = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const { email, updates } = req.body;
+    const updates = req.body; 
 
-    const updatedUser = await UserModel.findOneAndUpdate(
-      { email },
-      updates,
-      { new: true }   
-    );
-
-    if (!updatedUser) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
+    const updatedUser = await UserModel.findByIdAndUpdate(req.user._id, updates, { new: true });
 
     return res.status(200).json({ success: true, user: updatedUser });
   } catch (err) {
