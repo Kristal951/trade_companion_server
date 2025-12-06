@@ -269,7 +269,8 @@ export const LogoutUser = async (req, res) => {
     res.clearCookie("tradecompanion_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "none",
+      path: "/",
     });
 
     return res.status(200).json({
