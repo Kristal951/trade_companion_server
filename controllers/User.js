@@ -290,27 +290,33 @@ export const LogoutUser = async (req, res) => {
 };
 
 export const updateUser = async (req, res) => {
-   try {
-      const updates = { ...req.body };
+  try {
+    const updates = { ...req.body };
 
-      if (req.file) {
-        const tempPath = req.file.path;
+    if (req.file) {
+      const tempPath = req.file.path;
 
-        const result = await cloudinary.uploader.upload(tempPath, {
-          folder: "avatars",
-        });
-        updates.avatar = result.secure_url;
+      const result = await cloudinary.uploader.upload(tempPath, {
+        folder: "avatars",
+      });
+      updates.avatar = result.secure_url;
 
-        fs.unlink(tempPath, (err) => {
-          if (err) console.error("Failed to delete temp file:", err);
-        });
+      try {
+        await fs.unlink(tempPath);
+      } catch (err) {
+        console.error("Failed to delete temp file:", err);
       }
-
-      const updatedUser = await UserModel.findByIdAndUpdate(req.user._id, updates, { new: true });
-
-      res.status(200).json({ success: true, user: updatedUser });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ success: false, message: "Update failed" });
     }
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true }
+    );
+
+    res.status(200).json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Update failed" });
+  }
 };
