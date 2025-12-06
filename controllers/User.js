@@ -6,6 +6,7 @@ import {
   verifyGoogleToken,
 } from "../utils/index.js";
 import jwt from "jsonwebtoken";
+import cloudinary from "../utils/cloudinary.js";
 
 export const SignUpUser = async (req, res) => {
   try {
@@ -139,7 +140,7 @@ export const verify_email_code = async (req, res) => {
 };
 export const LoginUser = async (req, res) => {
   const { email, password } = req.body;
-  console.log(password)
+  console.log(password);
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
@@ -153,7 +154,7 @@ export const LoginUser = async (req, res) => {
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log(isPasswordValid)
+    console.log(isPasswordValid);
 
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid email or password" });
@@ -179,7 +180,7 @@ export const LoginUser = async (req, res) => {
       maxAge: 60 * 60 * 1000,
       sameSite: "none",
     });
-    console.log(token)
+    console.log(token);
 
     const { password: _, ...userData } = user.toObject();
 
@@ -207,7 +208,7 @@ export const SignInUserWithGoogle = async (req, res) => {
       return res.status(401).json({ message: "Invalid Google token" });
     }
     const { email, name, email_verified, sub, picture } = payload;
-    console.log(picture)
+    console.log(picture);
 
     if (!email_verified) {
       res.status(400).json({ message: "Google email not verified" });
@@ -234,7 +235,8 @@ export const SignInUserWithGoogle = async (req, res) => {
       await user.save();
     } else if (!user.isGoogle) {
       return res.status(400).json({
-        message: "This email is already registered with a different method, trying sign in with Google.",
+        message:
+          "This email is already registered with a different method, trying sign in with Google.",
       });
     }
     const jwtToken = jwt.sign(
@@ -243,7 +245,7 @@ export const SignInUserWithGoogle = async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    console.log(user.avatar)
+    console.log(user.avatar);
     res.cookie("tradecompanion_token", jwtToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -288,14 +290,27 @@ export const LogoutUser = async (req, res) => {
 };
 
 export const updateUser = async (req, res) => {
-  try {
-    const updates = req.body; 
+   try {
+      const updates = { ...req.body };
 
-    const updatedUser = await UserModel.findByIdAndUpdate(req.user._id, updates, { new: true });
+      if (req.file) {
+        const tempPath = req.file.path;
 
-    return res.status(200).json({ success: true, user: updatedUser });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: "Update failed" });
-  }
+        const result = await cloudinary.uploader.upload(tempPath, {
+          folder: "avatars",
+        });
+        updates.avatar = result.secure_url;
+
+        fs.unlink(tempPath, (err) => {
+          if (err) console.error("Failed to delete temp file:", err);
+        });
+      }
+
+      const updatedUser = await UserModel.findByIdAndUpdate(req.user._id, updates, { new: true });
+
+      res.status(200).json({ success: true, user: updatedUser });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ success: false, message: "Update failed" });
+    }
 };

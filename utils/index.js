@@ -2,6 +2,7 @@ import { emailVerificationtemplate } from "../templates/index.js";
 import transporter from "../config/nodemailer.js";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
+import multer from "multer";
 
 export function generateVerificationToken({ email, code, userID }) {
   const payload = {
@@ -49,3 +50,9 @@ export const verifyGoogleToken = async (token) => {
   });
   return ticket.getPayload();
 };
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "temp_uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+export const upload = multer({ storage });
