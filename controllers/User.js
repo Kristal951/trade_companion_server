@@ -65,7 +65,7 @@ export const SignUpUser = async (req, res) => {
     });
 
     try {
-      await sendVerificationEmailWithResend({ to: email, name, code });
+      await sendVerificationEmailWithResend(email, name, code);
     } catch (emailError) {
       console.log("Email sending failed:", emailError.message);
     }
