@@ -45,6 +45,7 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
 };
 
 export const sendVerificationEmailWithResend = async (email, name, code) => {
+  console.log(email, name, code)
   const html = emailVerificationtemplate
       .replace(/{{NAME}}/g, name)
       .replace(/{{CODE}}/g, code)
