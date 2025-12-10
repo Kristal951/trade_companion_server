@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import fs from "fs";
 import multer from "multer";
+import { Resend } from "resend";
 
 export function generateVerificationToken({ email, code, userID }) {
   const payload = {
@@ -43,6 +44,27 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
   }
 };
 
+export const sendVerificationEmailWithResend = async (email, name, code) => {
+  const html = emailVerificationtemplate
+      .replace(/{{NAME}}/g, name)
+      .replace(/{{CODE}}/g, code)
+      .replace(/{{YEAR}}/g, new Date().getFullYear())
+      .replace(/{{APP_NAME}}/g, "Trade Companion");
+  try {
+    const data = await resend.emails.send({
+      from: "Trade Companion <noreply@tradescompanion.com>", 
+      to: email,
+      subject: "Verify your email",
+      html: html
+    });
+    console.log("Verification email sent:", data);
+    return data;
+  } catch (error) {
+    console.error("Resend error:", error);
+    throw new Error("Email sending failed");
+  }
+};
+
 export const verifyGoogleToken = async (token) => {
   const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   const ticket = await client.verifyIdToken({
@@ -62,3 +84,5 @@ const storage = multer.diskStorage({
 });
 
 export const upload = multer({ storage });
+
+export const resend = new Resend(process.env.RESEND_API_KEY);

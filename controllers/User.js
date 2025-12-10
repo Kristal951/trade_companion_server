@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs"; // or 'bcrypt' if using native
 import UserModel from "../models/User.js";
 import {
   generateVerificationToken,
-  sendVerificationEmail,
+  sendVerificationEmailWithResend,
   verifyGoogleToken,
 } from "../utils/index.js";
 import jwt from "jsonwebtoken";
@@ -65,7 +65,7 @@ export const SignUpUser = async (req, res) => {
     });
 
     try {
-      await sendVerificationEmail({ to: email, name, code });
+      await sendVerificationEmailWithResend({ to: email, name, code });
     } catch (emailError) {
       console.log("Email sending failed:", emailError.message);
     }
