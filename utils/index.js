@@ -53,7 +53,7 @@ export const sendVerificationEmailWithResend = async (email, name, code) => {
       .replace(/{{APP_NAME}}/g, "Trade Companion");
   try {
     const data = await resend.emails.send({
-      from: "Trade Companion <noreply@tradescompanion.com>", 
+      from: "Trade Companion <noreply@resend.dev>", 
       to: email,
       subject: "Verify your email",
       html: html
