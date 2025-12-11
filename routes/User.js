@@ -2,6 +2,7 @@ import express from "express";
 import {
   LoginUser,
   LogoutUser,
+  resendVerificationCode,
   SignInUserWithGoogle,
   SignUpUser,
   updateUser,
@@ -18,5 +19,6 @@ router.post("/login", LoginUser);
 router.post("/google_login", SignInUserWithGoogle);
 router.post("/logout", LogoutUser);
 router.put('/update_user', authenticateUser, upload.single('avatar'), updateUser)
+router.get('/resend_verification_code', authenticateUser, resendVerificationCode)
 
 export default router;

@@ -77,7 +77,6 @@ export const SignUpUser = async (req, res) => {
       sameSite: "none",
       secure: true,
     });
-    console.log(token)
 
     const safeUser = {
       _id: newUser._id,
@@ -103,7 +102,6 @@ export const SignUpUser = async (req, res) => {
 export const verify_email_code = async (req, res) => {
   const { code } = req.body;
   const token = req.cookies.tradecompanion_token;
-  console.log(token, code)
 
   if (!code || !token) {
     return res
@@ -161,10 +159,6 @@ export const LoginUser = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
-
-    // if (!user.emailVerified) {
-    //   return res.status(403).json({ message: "Email not verified" });
-    // }
 
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET is not defined");
@@ -320,5 +314,36 @@ export const updateUser = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Update failed" });
+  }
+};
+
+export const resendVerificationCode = async (req, res) => {
+  try {
+    const user = req.user;
+    if (user.emailVerified) {
+      return res.status(400).json({ error: "Email is already verified" });
+    }
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const token = generateVerificationToken({
+      email: user.email,
+      code,
+      userID: user._id.toString(),
+    });
+    try {
+      await sendVerificationEmailWithResend(user.email, user.name, code);
+    } catch (emailError) {
+      console.log("Email sending failed:", emailError.message);
+    }
+    res.cookie("tradecompanion_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 1000,
+      sameSite: "none",
+      secure: true,
+    });
+    res.status(200).json({ message: "Verification code resent successfully" });
+  } catch (error) {
+    console.error("Error resending verification code:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
