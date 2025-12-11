@@ -77,6 +77,7 @@ export const SignUpUser = async (req, res) => {
       sameSite: "none",
       secure: true,
     });
+    console.log(token)
 
     const safeUser = {
       _id: newUser._id,
@@ -102,6 +103,7 @@ export const SignUpUser = async (req, res) => {
 export const verify_email_code = async (req, res) => {
   const { code } = req.body;
   const token = req.cookies.tradecompanion_token;
+  console.log(token, code)
 
   if (!code || !token) {
     return res

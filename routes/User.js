@@ -13,7 +13,7 @@ import { upload } from "../utils/index.js";
 const router = express.Router();
 
 router.post("/register", SignUpUser);
-router.post("/verify-email", verify_email_code);
+router.post("/verify_email", verify_email_code);
 router.post("/login", LoginUser);
 router.post("/google_login", SignInUserWithGoogle);
 router.post("/logout", LogoutUser);
