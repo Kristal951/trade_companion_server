@@ -8,7 +8,7 @@ export const authenticateUser = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log(decoded)
-    req.user = await UserModel.findById(decoded.userId); 
+    req.user = await UserModel.findById(decoded.userID); 
     if (!req.user) return res.status(404).json({ message: "User not found" });
 
     next();
