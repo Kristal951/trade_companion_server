@@ -66,6 +66,24 @@ export const sendVerificationEmailWithResend = async (email, name, code) => {
   }
 };
 
+export const sendForgotPasswordLinkWithResend = async (email, subject, html) => {
+  console.log(email, subject)
+
+  try {
+    const data = await resend.emails.send({
+      from: "onboarding@resend.dev", 
+      to: 'tradescompanion@gmail.com',
+      subject: subject,
+      html: html
+    });
+    console.log("email sent:", data);
+    return data;
+  } catch (error) {
+    console.error("Resend error:", error);
+    throw new Error("Email sending failed");
+  }
+};
+
 export const verifyGoogleToken = async (token) => {
   const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   const ticket = await client.verifyIdToken({

@@ -347,3 +347,66 @@ export const resendVerificationCode = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await UserModel.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 3600000; // 1 hour
+
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = expiresAt;
+    await user.save();
+
+    const resetLink = `https://yourapp.com/reset-password/${token}`;
+    await sendEmail({
+      to: email,
+      subject: "Password Reset",
+      html: `<p>Click <a href="${resetLink}">here</a> to reset your password. Link expires in 1 hour.</p>`,
+    });
+
+    res.json({ message: "Password reset email sent" });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.status(500).json({ error: "Server error. Please try again later." });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 6 characters" });
+    }
+
+    const user = await UserModel.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: "Password has been reset successfully" });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ error: "Server error. Please try again later." });
+  }
+};
