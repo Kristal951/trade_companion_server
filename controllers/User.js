@@ -371,7 +371,7 @@ export const forgotPassword = async (req, res) => {
       html: `<p>Click <a href="${resetLink}">here</a> to reset your password. Link expires in 1 hour.</p>`,
     });
 
-    res.json({ message: "Password reset email sent" });
+    return res.json({ message: "Password reset email sent" });
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ error: "Server error. Please try again later." });
