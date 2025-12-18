@@ -2,11 +2,13 @@ import bcrypt from "bcryptjs"; // or 'bcrypt' if using native
 import UserModel from "../models/User.js";
 import {
   generateVerificationToken,
+  sendForgotPasswordLinkWithResend,
   sendVerificationEmailWithResend,
   verifyGoogleToken,
 } from "../utils/index.js";
 import jwt from "jsonwebtoken";
 import cloudinary from "../utils/cloudinary.js";
+import crypto from 'crypto'
 
 export const SignUpUser = async (req, res) => {
   try {
@@ -356,14 +358,14 @@ export const forgotPassword = async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = Date.now() + 3600000; // 1 hour
+    const expiresAt = Date.now() + 3600000; 
 
     user.resetPasswordToken = token;
     user.resetPasswordExpires = expiresAt;
     await user.save();
 
-    const resetLink = `https://yourapp.com/reset-password/${token}`;
-    await sendEmail({
+    const resetLink = `https://dev-tradecompanion.vercel.app/auth/reset-password/${token}`;
+    await sendForgotPasswordLinkWithResend({
       to: email,
       subject: "Password Reset",
       html: `<p>Click <a href="${resetLink}">here</a> to reset your password. Link expires in 1 hour.</p>`,
