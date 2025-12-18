@@ -66,13 +66,13 @@ export const sendVerificationEmailWithResend = async (email, name, code) => {
   }
 };
 
-export const sendForgotPasswordLinkWithResend = async (email, subject, html) => {
-  console.log(email, subject)
+export const sendForgotPasswordLinkWithResend = async ({to, subject, html}) => {
+  console.log(to, subject)
 
   try {
     const data = await resend.emails.send({
       from: "onboarding@resend.dev", 
-      to: 'tradescompanion@gmail.com',
+      to: to,
       subject: subject,
       html: html
     });
