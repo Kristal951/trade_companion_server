@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import userRoutes from "./routes/User.js";
 import StripeRoutes from "./routes/Stripe.js";
+import planRoutes from "./routes/Plans.js";
 dotenv.config();
 
 const app = express();
@@ -51,6 +52,7 @@ app.get("/", (req, res) => {
 });
 app.use("/api/user", userRoutes);
 app.use("/api/stripe", StripeRoutes);
+app.use("/api/plans", planRoutes);
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
