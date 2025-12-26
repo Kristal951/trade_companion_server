@@ -34,7 +34,8 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow non-browser requests
+      if (!origin) return callback(null, true); 
+      console.log("Incoming request origin:", origin); 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
