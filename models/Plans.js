@@ -5,7 +5,7 @@ const planSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   features: {type: Array, required: true},
   currency: { type: String, default: "NGN" },
-  interval: { type: String, enum: ["monthly", "yearly"], required: true },
+  interval: { type: String, enum: ["monthly", "yearly", "free"], required: true },
   flutterwave_plan_id: { type: String, required: true },
 });
 

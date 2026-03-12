@@ -18,8 +18,6 @@ export function generateVerificationToken({ email, code, userID }) {
 }
 
 export const sendVerificationEmail = async ({ to, name, code }) => {
-  console.log("Sending email to:", to, name, code);
-
   try {
     const html = emailVerificationtemplate
       .replace(/{{NAME}}/g, name)
@@ -37,28 +35,24 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
     } catch (error) {
       console.log("email error", error);
     }
-
-    console.log("Verification email sent successfully.");
   } catch (err) {
     console.error("Verification email failed:", err.message);
   }
 };
 
 export const sendVerificationEmailWithResend = async (email, name, code) => {
-  console.log(email, name, code)
   const html = emailVerificationtemplate
-      .replace(/{{NAME}}/g, name)
-      .replace(/{{CODE}}/g, code)
-      .replace(/{{YEAR}}/g, new Date().getFullYear())
-      .replace(/{{APP_NAME}}/g, "Trade Companion");
+    .replace(/{{NAME}}/g, name)
+    .replace(/{{CODE}}/g, code)
+    .replace(/{{YEAR}}/g, new Date().getFullYear())
+    .replace(/{{APP_NAME}}/g, "Trade Companion");
   try {
     const data = await resend.emails.send({
-      from: "onboarding@resend.dev", 
-      to: 'tradescompanion@gmail.com',
+      from: "onboarding@resend.dev",
+      to: "tradescompanion@gmail.com",
       subject: "Verify your email",
-      html: html
+      html: html,
     });
-    console.log("Verification email sent:", data);
     return data;
   } catch (error) {
     console.error("Resend error:", error);
@@ -66,17 +60,18 @@ export const sendVerificationEmailWithResend = async (email, name, code) => {
   }
 };
 
-export const sendForgotPasswordLinkWithResend = async ({to, subject, html}) => {
-  console.log(to, subject)
-
+export const sendForgotPasswordLinkWithResend = async ({
+  to,
+  subject,
+  html,
+}) => {
   try {
     const data = await resend.emails.send({
-      from: "onboarding@resend.dev", 
+      from: "onboarding@resend.dev",
       to: to,
       subject: subject,
-      html: html
+      html: html,
     });
-    console.log("email sent:", data);
     return data;
   } catch (error) {
     console.error("Resend error:", error);
@@ -105,3 +100,49 @@ const storage = multer.diskStorage({
 export const upload = multer({ storage });
 
 export const resend = new Resend(process.env.RESEND_API_KEY);
+
+export const isActiveSubscriptionStatus = (status) => {
+  return status === "active" || status === "trialing";
+};
+
+export const extractIntervalFromPlanKey = (planKey) => {
+  const value = String(planKey || "")
+    .toLowerCase()
+    .trim();
+
+  if (value.endsWith("-monthly")) return "month";
+  if (value.endsWith("-yearly")) return "year";
+
+  return null;
+};
+
+export const PLAN_NAME = {
+  FREE: "Free",
+  BASIC: "Basic",
+  PRO: "Pro",
+  PREMIUM: "Premium",
+};
+
+export const normalizePlan = (planKey) => {
+  const value = String(planKey || "")
+    .toLowerCase()
+    .trim();
+
+  const planMap = {
+    free: PLAN_NAME.FREE,
+
+    "basic-monthly": PLAN_NAME.BASIC,
+    "basic-yearly": PLAN_NAME.BASIC,
+    basic: PLAN_NAME.BASIC,
+
+    "pro-monthly": PLAN_NAME.PRO,
+    "pro-yearly": PLAN_NAME.PRO,
+    pro: PLAN_NAME.PRO,
+
+    "premium-monthly": PLAN_NAME.PREMIUM,
+    "premium-yearly": PLAN_NAME.PREMIUM,
+    premium: PLAN_NAME.PREMIUM,
+  };
+
+  return planMap[value] || PLAN_NAME.FREE;
+};

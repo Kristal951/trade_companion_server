@@ -7,37 +7,98 @@ const PlanName = {
   PREMIUM: "Premium",
 };
 
-const CTraderSchema = new mongoose.Schema(
+const EncryptedBlobSchema = new mongoose.Schema(
   {
-    accountId: { type: String },
-    accessToken: { type: String },
+    iv: { type: String, default: null },
+    tag: { type: String, default: null },
+    data: { type: String, default: null },
+  },
+  { _id: false }
+);
+
+export const CTraderSchema = new mongoose.Schema(
+  {
+    accountId: { type: String, default: null },
+
+    accessTokenEnc: { type: EncryptedBlobSchema, select: false, default: null },
+    refreshTokenEnc: { type: EncryptedBlobSchema, select: false, default: null },
+
+    acquiredAt: { type: Date, default: null },
+    expiresAt: { type: Date, default: null },
+
+    scope: { type: String, default: null },
+    tokenType: { type: String, default: "bearer" },
+
     isConnected: { type: Boolean, default: false },
     autoTradeEnabled: { type: Boolean, default: false },
   },
-  { _id: false } 
+  { _id: false }
 );
 
 const UserSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+
     email: { type: String, required: true, unique: true },
-    avatar: { type: String },
-    emailVerified: {type: Boolean},
-    password: {type: String},
-    age: {type: Number},
-    isGoogle: {type: Boolean},
-    telegramNumber: { type: String },
+    emailVerified: { type: Boolean, default: false },
+    verificationCode: { type: String },
+    verificationCodeSentAt: { type: Date },
+
+    password: { type: String, select: false },
+    isGoogle: { type: Boolean, default: false },
+
+    avatar: { type: String, default: null },
+    age: { type: Number, default: null },
+    telegramNumber: { type: String, default: null },
+
     subscribedPlan: {
       type: String,
       enum: Object.values(PlanName),
       default: PlanName.FREE,
     },
-    isMentor: { type: Boolean, required: true },
-    cTraderConfig: { type: CTraderSchema },
+
+    isSubscribed: { type: Boolean, default: false },
+    subscriptionStatus: { type: String, default: null },
+    subscriptionMethod: {
+      type: String,
+      enum: ["stripe", "manual", "promo", "apple", "google_play"],
+      default: null,
+    },
+    subscriptionPriceKey: { type: String, default: null },
+    subscriptionInterval: { type: String, default: null },
+    subscriptionCurrentPeriodEnd: { type: Date, default: null },
+    stripeCustomerId: { type: String, default: null },
+    stripeSubscriptionId: { type: String, default: null },
+    stripeCheckoutSessionId: { type: String, default: null },
+
+    lastLoginAt: { type: Date, default: null },
+    lastLoginIp: { type: String, default: null },
+    lastLoginLocation: {
+      country: { type: String, default: null },
+      city: { type: String, default: null },
+      region: { type: String, default: null },
+    },
+
+    isMentor: { type: Boolean, default: false },
+    mentorID: { type: String, default: null },
+
+    cTraderConfig: { type: CTraderSchema, default: () => ({}) },
   },
   { timestamps: true }
 );
 
-const UserModel = mongoose.model("User", UserSchema);
+UserSchema.index({ email: 1 });
+UserSchema.index({ lastLoginAt: -1 });
+UserSchema.index({ "cTraderConfig.accountId": 1 });
+UserSchema.index({ stripeCustomerId: 1 });
+UserSchema.index({ stripeSubscriptionId: 1 });
+UserSchema.index({ stripeCheckoutSessionId: 1 });
 
-export default UserModel
+UserSchema.statics.findWithCtraderTokens = function (query) {
+  return this.findOne(query).select(
+    "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc"
+  );
+};
+
+const UserModel = mongoose.model("User", UserSchema);
+export default UserModel;

@@ -1,24 +1,8 @@
-import jwt from "jsonwebtoken";
-const RefreshToken = require("../models/RefreshToken");
+export const getClientIp = (req) => {
+  let ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket?.remoteAddress || null;
+  if (!ip) return null;
+  if (ip === "::1") ip = "127.0.0.1";
+  if (ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
+  return ip;
+}
 
-const generateTokens = async (userId) => {
-  const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "30m",
-  });
-
-  const refreshToken = jwt.sign(
-    { id: userId },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: "7d" }
-  );
-
-  await RefreshToken.create({
-    userId,
-    token: refreshToken,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  });
-
-  return { accessToken, refreshToken };
-};
-
-module.exports = { generateTokens };
