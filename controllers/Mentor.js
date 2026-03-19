@@ -4,6 +4,11 @@ import User from "../models/User.js";
 import mongoose from "mongoose";
 import cloudinary from "../utils/cloudinary.js";
 import Stripe from "stripe";
+import UserModel from "../models/User.js";
+import MentorModel from "../models/Mentor.js";
+import { createAndSendManyNotifications } from "../services/Notification.js";
+import { io } from "../server.js";
+import { sendMentorPostTelegramAlerts } from "../services/Telegram.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -15,6 +20,8 @@ export const createMentor = async (req, res) => {
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
+    if (!Number(price))
+      return res.status(404).json({ message: "Invalid Price" });
 
     if (user.isMentor) {
       return res.status(400).json({ message: "Already a mentor" });
@@ -114,6 +121,7 @@ export const createMentorPost = async (req, res) => {
     if (!signalDetails) {
       return res.status(400).json({ message: "signalDetails required" });
     }
+
     try {
       parsedSignalDetails =
         typeof signalDetails === "string"
@@ -122,6 +130,7 @@ export const createMentorPost = async (req, res) => {
 
       if (
         !parsedSignalDetails.takeProfit ||
+        !Array.isArray(parsedSignalDetails.takeProfit) ||
         parsedSignalDetails.takeProfit.some((tp) => !tp)
       ) {
         return res.status(400).json({
@@ -136,12 +145,22 @@ export const createMentorPost = async (req, res) => {
   if (!mentorID || !type || !title || !content) {
     return res.status(400).json({ message: "Required parameters missing" });
   }
+
   if (!mongoose.Types.ObjectId.isValid(mentorID)) {
     return res.status(400).json({ message: "Invalid Mentor ID" });
   }
 
   try {
-    let fileURLs = [];
+    const mentor = await MentorModel.findById(mentorID).select(
+      "_id name subscribers user",
+    );
+
+    if (!mentor) {
+      return res.status(404).json({ message: "Mentor not found" });
+    }
+
+    const fileURLs = [];
+
     if (files && files.length > 0) {
       for (const file of files) {
         const result = await cloudinary.uploader.upload(file.path, {
@@ -164,7 +183,58 @@ export const createMentorPost = async (req, res) => {
     }
 
     const post = await MentorPost.create(postData);
-    return res.status(201).json({ message: "Post created", post });
+
+    const activeSubscribers =
+      mentor.subscribers?.filter((sub) => sub.status === "Active") || [];
+
+    if (activeSubscribers.length > 0) {
+      const payloads = activeSubscribers.map((subscriber) => ({
+        recipient: String(subscriber.userId),
+        type: type === "signal" ? "signal" : "mentor_post",
+        title:
+          type === "signal"
+            ? `New signal from ${mentor.name}`
+            : `New post from ${mentor.name}`,
+        message:
+          type === "signal"
+            ? `${mentor.name} shared a new trading signal: ${title}`
+            : `${mentor.name} published a new post: ${title}`,
+        linkTo: `/mentor/${mentor._id}`,
+        priority: type === "signal" ? "high" : "normal",
+        meta: {
+          mentorId: String(mentor._id),
+          postId: String(post._id),
+          postType: type,
+          ...(type === "signal" && parsedSignalDetails
+            ? {
+                instrument: parsedSignalDetails.instrument || null,
+                direction: parsedSignalDetails.direction || null,
+              }
+            : {}),
+        },
+        dedupeKey: `mentor_post:${post._id}:user:${subscriber.userId}`,
+      }));
+
+      await createAndSendManyNotifications({
+        io,
+        payloads,
+      });
+
+      // if (type === "signal") {
+      const res = await sendMentorPostTelegramAlerts({
+        subscriberIds: activeSubscribers.map((sub) => sub.userId),
+        mentor,
+        post,
+        signalDetails: parsedSignalDetails,
+      });
+      console.log(res, "tg");
+      // }
+    }
+
+    return res.status(201).json({
+      message: "Post created",
+      post,
+    });
   } catch (error) {
     console.error("Error creating mentor post:", error);
     return res.status(500).json({
@@ -446,56 +516,74 @@ export const submitReview = async (req, res) => {
 export const createMentorCheckout = async (req, res) => {
   try {
     const { mentorId } = req.body;
-
     const userId = req.user?.userId;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(401).json({ message: "User not found" });
+    if (!userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
 
-    const mentor = await Mentor.findById(mentorId);
-    if (!mentor) return res.status(404).json({ message: "Mentor not found" });
+    if (!mentorId || !mentorId.trim?.()) {
+      return res.status(400).json({ message: "Mentor ID is required" });
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const mentor = await MentorModel.findById(mentorId);
+    if (!mentor) {
+      return res.status(404).json({ message: "Mentor not found" });
+    }
 
     if (!mentor.stripePriceId) {
       return res.status(400).json({ message: "Mentor Stripe price not set" });
     }
 
-    if (mentor.user.toString() === user._id.toString()) {
+    if (String(mentor.user) === String(user._id)) {
       return res
         .status(400)
         .json({ message: "You can't subscribe to yourself" });
     }
 
-    const already = mentor.subscribers?.some(
+    const alreadyActive = mentor.subscribers?.some(
       (s) => String(s.userId) === String(user._id) && s.status === "Active",
     );
-    if (already) return res.status(400).json({ message: "Already subscribed" });
+
+    if (alreadyActive) {
+      return res.status(400).json({ message: "Already subscribed" });
+    }
 
     let stripeCustomerId = user.stripeCustomerId;
+
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
         email: user.email,
         name: user.name,
         metadata: { userId: user._id.toString() },
       });
+
       stripeCustomerId = customer.id;
       user.stripeCustomerId = stripeCustomerId;
       await user.save();
     }
 
     const FRONTEND = process.env.FRONTEND_BASE_URL;
+    if (!FRONTEND) {
+      return res
+        .status(500)
+        .json({ message: "FRONTEND_BASE_URL is not configured" });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: stripeCustomerId,
       line_items: [{ price: mentor.stripePriceId, quantity: 1 }],
-
       metadata: {
         type: "mentor_subscription",
         userId: user._id.toString(),
         mentorId: mentor._id.toString(),
       },
-
       subscription_data: {
         metadata: {
           type: "mentor_subscription",
@@ -503,12 +591,11 @@ export const createMentorCheckout = async (req, res) => {
           mentorId: mentor._id.toString(),
         },
       },
-
       success_url: `${FRONTEND}/mentor/${mentor._id}?sub=success`,
       cancel_url: `${FRONTEND}/mentor/${mentor._id}?sub=cancel`,
     });
 
-    return res.json({ url: session.url });
+    return res.status(200).json({ url: session.url });
   } catch (err) {
     console.error("createMentorCheckout error:", err);
     return res.status(500).json({ message: err.message });

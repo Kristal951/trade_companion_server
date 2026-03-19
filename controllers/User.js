@@ -67,6 +67,7 @@ export const SignUpUser = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "15m" },
     );
+    console.log(code);
 
     await sendVerificationEmailWithResend(emailNorm, newUser.name, code);
 
@@ -301,7 +302,7 @@ export const LoginUser = async (req, res) => {
     });
 
     const { password, ...userData } = user.toObject();
-    console.log(userData)
+    console.log(userData);
 
     return res.status(200).json({
       message: "Login successful",
@@ -431,8 +432,8 @@ export const LogoutUser = async (req, res) => {
       try {
         const decoded = jwt.verify(
           refreshToken,
-          process.env.REFRESH_TOKEN_SECRET
-        )
+          process.env.REFRESH_TOKEN_SECRET,
+        );
 
         const { userId, sessionId } = decoded;
 
@@ -442,7 +443,7 @@ export const LogoutUser = async (req, res) => {
             {
               revoked: true,
               updatedAt: new Date(),
-            }
+            },
           );
         }
       } catch (err) {

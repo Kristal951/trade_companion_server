@@ -13,7 +13,7 @@ const EncryptedBlobSchema = new mongoose.Schema(
     tag: { type: String, default: null },
     data: { type: String, default: null },
   },
-  { _id: false }
+  { _id: false },
 );
 
 export const CTraderSchema = new mongoose.Schema(
@@ -21,7 +21,11 @@ export const CTraderSchema = new mongoose.Schema(
     accountId: { type: String, default: null },
 
     accessTokenEnc: { type: EncryptedBlobSchema, select: false, default: null },
-    refreshTokenEnc: { type: EncryptedBlobSchema, select: false, default: null },
+    refreshTokenEnc: {
+      type: EncryptedBlobSchema,
+      select: false,
+      default: null,
+    },
 
     acquiredAt: { type: Date, default: null },
     expiresAt: { type: Date, default: null },
@@ -32,8 +36,14 @@ export const CTraderSchema = new mongoose.Schema(
     isConnected: { type: Boolean, default: false },
     autoTradeEnabled: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
+
+export const NotificationSettingsSchema = new mongoose.Schema({
+  email: { type: Boolean, default: false },
+  push: { type: Boolean, default: true },
+  telegram: { type: Boolean, default: false },
+});
 
 const UserSchema = new mongoose.Schema(
   {
@@ -49,7 +59,13 @@ const UserSchema = new mongoose.Schema(
 
     avatar: { type: String, default: null },
     age: { type: Number, default: null },
-    telegramNumber: { type: String, default: null },
+    telegram: {
+      chatId: { type: String, default: null },
+      username: { type: String, default: null },
+      linkedAt: { type: Date, default: null },
+    },
+    telegramLinkCode: { type: String, default: null },
+    telegramLinkCodeExpiresAt: { type: Date, default: null },
 
     subscribedPlan: {
       type: String,
@@ -81,10 +97,14 @@ const UserSchema = new mongoose.Schema(
 
     isMentor: { type: Boolean, default: false },
     mentorID: { type: String, default: null },
+    notificationSettings: {
+      type: NotificationSettingsSchema,
+      default: () => ({}),
+    },
 
     cTraderConfig: { type: CTraderSchema, default: () => ({}) },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 UserSchema.index({ email: 1 });
@@ -96,7 +116,7 @@ UserSchema.index({ stripeCheckoutSessionId: 1 });
 
 UserSchema.statics.findWithCtraderTokens = function (query) {
   return this.findOne(query).select(
-    "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc"
+    "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc",
   );
 };
 

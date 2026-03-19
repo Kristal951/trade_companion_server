@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import cors from "cors";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
+import http from "http";
+import { Server } from "socket.io";
 
 import userRoutes from "./routes/User.js";
 import mentorRoutes from "./routes/Mentor.js";
@@ -10,11 +12,16 @@ import StripeRoutes from "./routes/Stripe.js";
 import planRoutes from "./routes/Plans.js";
 import signalRoutes from "./routes/Signals.js";
 import ctraderRoutes from "./routes/Ctrader.js";
-import stripeWebhookRouter from "./webhooks/StripeWebhook.js";
+import notificationRoutes from "./routes/Notification.js";
+import telegramRoutes from "./routes/Telegram.js";
+import { registerNotificationSocket } from "./sockets/NotificationSocket.js";
+import { registerTelegramHandlers } from "./services/Telegram.js";
 
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+
 const PORT = process.env.PORT_NUMBER || 5000;
 
 const allowedOrigins = [
@@ -23,6 +30,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URI_1,
   process.env.FRONTEND_URI_2,
   process.env.FRONTEND_URI_3,
+  process.env.FRONTEND_BASE_URL,
 ].filter(Boolean);
 
 const connectDB = async () => {
@@ -49,11 +57,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-user-id",
-  ],
+  allowedHeaders: ["Content-Type", "Authorization", "x-user-id"],
   optionsSuccessStatus: 204,
 };
 
@@ -63,16 +67,11 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("🚀 Server is running...");
 });
 
-app.use(
-  "/api/webhooks",
-  express.raw({ type: "application/json" }),
-  stripeWebhookRouter
-);
-
+app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: "10mb" }));
 
 app.use("/api/user", userRoutes);
@@ -81,6 +80,8 @@ app.use("/api/stripe", StripeRoutes);
 app.use("/api/signals", signalRoutes);
 app.use("/api/ctrader", ctraderRoutes);
 app.use("/api/plans", planRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/telegram", telegramRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -99,7 +100,22 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, async () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  await connectDB();
+export const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+  },
 });
+
+registerNotificationSocket(io);
+registerTelegramHandlers();
+
+const startServer = async () => {
+  await connectDB();
+
+  server.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+  });
+};
+
+startServer();

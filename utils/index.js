@@ -5,6 +5,8 @@ import { OAuth2Client } from "google-auth-library";
 import fs from "fs";
 import multer from "multer";
 import { Resend } from "resend";
+import UserModel from "../models/User.js";
+import { sendTelegramMessage } from "../services/Telegram.js";
 
 export function generateVerificationToken({ email, code, userID }) {
   const payload = {
@@ -145,4 +147,23 @@ export const normalizePlan = (planKey) => {
   };
 
   return planMap[value] || PLAN_NAME.FREE;
+};
+
+export const sendTelegramNotificationToUser = async ({
+  userId,
+  title,
+  message,
+}) => {
+  try {
+    const user = await UserModel.findById(userId);
+
+    if (!user?.telegram?.chatId) return;
+    if (!user?.telegram?.notificationsEnabled) return;
+
+    const text = `<b>${title}</b>\n\n${message}`;
+
+    await sendTelegramMessage(user.telegram.chatId, text);
+  } catch (error) {
+    console.error("sendTelegramNotificationToUser error:", error.message);
+  }
 };

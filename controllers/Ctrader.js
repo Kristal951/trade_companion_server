@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import UserModel from "../models/User.js"; // adjust path
+import UserModel from "../models/User.js"; 
 import { decryptText, encryptText } from "../utils/ctraderCrypto.js";
 import {
   refreshCtraderTokenIfNeeded,
@@ -138,7 +138,6 @@ export const callback = async (req, res) => {
   if (!stateCookie)
     return res.status(400).send("Security error: Missing state cookie");
 
-  // session binding (cookie must match what we issued)
   if (String(stateCookie) !== String(state)) {
     return res
       .status(400)
