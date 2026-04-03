@@ -2,10 +2,11 @@ import axios from "axios";
 import UserModel from "../models/User.js";
 import TelegramBot from "node-telegram-bot-api";
 import crypto from "crypto";
+import Notification from "../models/Notification.js";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const APP_URL = process.env.NGROK_URL || process.env.CLIENT_URL;
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 const TELEGRAM_CAPTION_LIMIT = 1024;
 const TELEGRAM_MESSAGE_LIMIT = 4096;
@@ -14,6 +15,11 @@ const trimText = (text = "", limit = TELEGRAM_MESSAGE_LIMIT) => {
   if (!text) return "";
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 3)}...`;
+};
+
+export const findNotificationByDedupeKey = async (dedupeKey) => {
+  if (!dedupeKey) return null;
+  return Notification.findOne({ dedupeKey });
 };
 
 export const generateTelegramLinkCode = () => {
@@ -38,6 +44,43 @@ const escapeHtml = (unsafe = "") => {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+};
+
+const buildTelegramLink = (linkTo = "") => {
+  const baseUrl =
+    process.env.NGROK_URL ||
+    process.env.PUBLIC_APP_URL ||
+    process.env.CLIENT_URL;
+
+  if (!baseUrl || !linkTo) return null;
+
+  const cleanBase = String(baseUrl).replace(/\/+$/, "");
+  const cleanPath = String(linkTo).startsWith("/") ? linkTo : `/${linkTo}`;
+
+  const fullUrl = `${cleanBase}${cleanPath}`;
+
+  if (!/^https:\/\//i.test(fullUrl)) {
+    return null;
+  }
+
+  return fullUrl;
+};
+
+const buildTelegramNotificationMessage = ({
+  title,
+  message,
+  priority = "normal",
+}) => {
+  const priorityEmoji =
+    priority === "high" ? "🚨" : priority === "low" ? "🔕" : "📩";
+
+  return trimText(
+    `
+${priorityEmoji} <b>${escapeHtml(title || "Notification")}</b>
+
+${escapeHtml(message || "You have a new notification.")}
+    `.trim(),
+  );
 };
 
 export const telegramBot = token
@@ -344,6 +387,121 @@ export const sendMentorPostTelegramAlerts = async ({
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+};
+export const createAndSendTelegramNotification = async ({
+  recipient,
+  title,
+  message,
+  linkTo = "",
+  priority = "normal",
+  meta = {},
+  dedupeKey = null,
+}) => {
+  try {
+    if (!recipient) {
+      return {
+        success: false,
+        skipped: true,
+        reason: "Missing recipient",
+      };
+    }
+
+    const user = await UserModel.findById(recipient).select(
+      "_id telegram notificationSettings telegramNotificationDedupes",
+    );
+
+    if (!user) {
+      return {
+        success: false,
+        skipped: true,
+        reason: "User not found",
+      };
+    }
+
+    const chatId = user?.telegram?.chatId;
+    const telegramEnabled = user?.notificationSettings?.telegram === true;
+
+    if (!chatId || !telegramEnabled) {
+      return {
+        success: false,
+        skipped: true,
+        reason: "Telegram not connected or disabled",
+      };
+    }
+
+    if (dedupeKey) {
+      const existing = await findNotificationByDedupeKey(dedupeKey);
+
+      if (existing) {
+        return {
+          success: true,
+          duplicate: true,
+          skipped: true,
+          reason: "Duplicate telegram notification",
+        };
+      }
+    }
+
+    const text = buildTelegramNotificationMessage({
+      title,
+      message,
+      priority,
+    });
+
+    const fullUrl = buildTelegramLink(linkTo);
+
+    const options = {
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    };
+
+    if (fullUrl) {
+      options.reply_markup = {
+        inline_keyboard: [
+          [
+            {
+              text: "📲 Open Trade Companion",
+              url: fullUrl,
+            },
+          ],
+        ],
+      };
+    }
+
+    const telegramRes = await sendTelegramMessage(chatId, text, options);
+
+    if (dedupeKey) {
+      await UserModel.updateOne(
+        { _id: recipient },
+        {
+          $addToSet: { telegramNotificationDedupes: dedupeKey },
+        },
+      );
+    }
+
+    return {
+      success: true,
+      sent: true,
+      channel: "telegram",
+      recipient: String(recipient),
+      chatId,
+      telegramRes,
+      meta,
+    };
+  } catch (error) {
+    console.error(
+      `Telegram notification failed for user ${recipient}:`,
+      error?.response?.data || error.message || error,
+    );
+
+    return {
+      success: false,
+      sent: false,
+      channel: "telegram",
+      recipient: String(recipient),
+      error: error?.response?.data || error.message || "Unknown telegram error",
     };
   }
 };

@@ -35,15 +35,13 @@ export const createNotification = async (payload) => {
   const builtPayload = buildNotificationPayload(payload);
 
   if (builtPayload.dedupeKey) {
-    const existing = await findNotificationByDedupeKey(
-      builtPayload.dedupeKey,
-    );
+    const existing = await findNotificationByDedupeKey(builtPayload.dedupeKey);
     if (existing) return existing;
   }
 
   try {
     const notification = await Notification.create(builtPayload);
-    console.log(notification, 'notif')
+    console.log(notification, "notif");
     return notification;
   } catch (error) {
     if (error?.code === 11000 && builtPayload.dedupeKey) {
@@ -52,6 +50,7 @@ export const createNotification = async (payload) => {
       );
       if (existing) return existing;
     }
+    console.log(error);
     throw error;
   }
 };
@@ -61,9 +60,7 @@ export const createManyNotifications = async (payloads = []) => {
 
   const docs = payloads.map((payload) => buildNotificationPayload(payload));
 
-  const dedupeKeys = docs
-    .map((doc) => doc.dedupeKey)
-    .filter(Boolean);
+  const dedupeKeys = docs.map((doc) => doc.dedupeKey).filter(Boolean);
 
   let existingByKey = new Map();
 
@@ -144,7 +141,6 @@ export const createManyNotifications = async (payloads = []) => {
 };
 
 export const emitNotificationToUser = ({ io, userId, notification }) => {
-  console.log(io, userId, notification, 'emit')
   if (!io || !userId || !notification) return;
 
   io.to(`user:${String(userId)}`).emit("notification:new", notification);
@@ -161,7 +157,6 @@ export const createAndSendNotification = async ({ io, ...payload }) => {
   }
 
   const notification = await createNotification(builtPayload);
-  console.log(notification)
 
   if (!existing) {
     emitNotificationToUser({

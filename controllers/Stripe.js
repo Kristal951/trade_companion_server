@@ -10,6 +10,7 @@ import {
 } from "../utils/index.js";
 import { io } from "../server.js";
 import { createAndSendNotification } from "../services/Notification.js";
+import { createAndSendTelegramNotification } from "../services/Telegram.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-08-27.basil",
@@ -320,12 +321,6 @@ const handleStripeWebhookEvent = async ({ event, io }) => {
 const handleCheckoutSessionCompleted = async ({ event, io }) => {
   const session = event.data.object;
 
-  console.log("checkout.session.completed received");
-  console.log("Session mode:", session.mode);
-  console.log("Session metadata:", session.metadata);
-  console.log("Session subscription:", session.subscription);
-  console.log("Session customer:", session.customer);
-
   if (session.mode !== "subscription") {
     console.log("Returning early: session mode is not subscription");
     return;
@@ -351,8 +346,6 @@ const handleCheckoutSessionCompleted = async ({ event, io }) => {
     return;
   }
 
-  console.log("Routing to app subscription handler");
-
   await activateAppSubscriptionFromCheckout({
     event,
     io,
@@ -369,19 +362,8 @@ const activateMentorSubscriptionFromCheckout = async ({
   subscriptionId,
   customerId,
 }) => {
-  console.log("activateMentorSubscriptionFromCheckout called");
-
   const userId = session.metadata?.userId;
   const mentorId = session.metadata?.mentorId;
-
-  console.log("Mentor checkout values:", {
-    userId,
-    mentorId,
-    subscriptionId,
-    customerId,
-    sessionId: session?.id,
-    metadata: session?.metadata,
-  });
 
   if (!userId || !mentorId || !subscriptionId) {
     console.log("Returning early: missing userId, mentorId, or subscriptionId");
@@ -389,15 +371,18 @@ const activateMentorSubscriptionFromCheckout = async ({
   }
 
   const user = await UserModel.findById(userId).select("name avatar");
-
-  console.log("Found user:", user);
+  const mentor = await MentorModel.findById(mentorId).select("name avatar");
 
   if (!user) {
     console.log("Returning early: user not found");
     return;
   }
+  if (!mentor) {
+    console.log("Returning early: mentor not found");
+    return;
+  }
 
-  const mentor = await upsertMentorSubscriber({
+  await upsertMentorSubscriber({
     mentorId,
     userId,
     name: user.name,
@@ -408,13 +393,11 @@ const activateMentorSubscriptionFromCheckout = async ({
     subscribedDate: new Date(),
   });
 
-  console.log("upsertMentorSubscriber result:", mentor?._id);
-
-  const notRes = await notifyBilling({
+  await notifyBilling({
     io,
     recipient: userId,
     title: "Mentor Subscription Active",
-    message: "Your mentor subscription is now active.",
+    message: `Your subscription to ${mentor.name} is now active.`,
     linkTo: MENTOR_BILLING_LINK,
     priority: "normal",
     meta: buildStripeMeta(event, {
@@ -426,7 +409,53 @@ const activateMentorSubscriptionFromCheckout = async ({
     dedupeKey: `billing:mentor_subscription_active:${subscriptionId}`,
   });
 
-  console.log("notifyBilling result:", notRes);
+  await createAndSendTelegramNotification({
+    recipient: userId,
+    title: "Mentor Subscription Active",
+    message: `Your subscription to ${mentor.name} is now active.`,
+    linkTo: MENTOR_BILLING_LINK,
+    priority: "normal",
+    meta: buildStripeMeta(event, {
+      mentorId,
+      subscriptionId,
+      customerId,
+      checkoutSessionId: session.id,
+    }),
+    dedupeKey: `billing:mentor_subscription_active:${subscriptionId}:telegram:user`,
+  });
+
+  await notifyBilling({
+    io,
+    recipient: mentorId,
+    title: "New subscriber",
+    message: `${user.name} just subscribed to your plan`,
+    linkTo: "/mentor/followers",
+    priority: "normal",
+    meta: buildStripeMeta(event, {
+      mentorId,
+      subscriptionId,
+      customerId,
+      checkoutSessionId: session.id,
+      type: "info",
+    }),
+    dedupeKey: `billing:mentor_subscription_active:${subscriptionId}:${mentorId}`,
+  });
+
+  await createAndSendTelegramNotification({
+    recipient: mentorId,
+    title: "New subscriber",
+    message: `${user.name} just subscribed to your plan`,
+    linkTo: "/mentor/followers",
+    priority: "normal",
+    meta: buildStripeMeta(event, {
+      mentorId,
+      userId,
+      subscriptionId,
+      customerId,
+      checkoutSessionId: session.id,
+    }),
+    dedupeKey: `billing:mentor_subscription_active:${subscriptionId}:telegram:mentor`,
+  });
 };
 
 const activateAppSubscriptionFromCheckout = async ({
@@ -891,7 +920,7 @@ export const createCheckout = async (req, res) => {
 };
 
 export const makeStripeWebhook = () => {
-   console.log("🔥 Stripe webhook hit");
+  console.log("🔥 Stripe webhook hit");
   return async (req, res) => {
     const sig = req.headers["stripe-signature"];
 

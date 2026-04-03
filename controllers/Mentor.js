@@ -220,15 +220,12 @@ export const createMentorPost = async (req, res) => {
         payloads,
       });
 
-      // if (type === "signal") {
-      const res = await sendMentorPostTelegramAlerts({
+       await sendMentorPostTelegramAlerts({
         subscriberIds: activeSubscribers.map((sub) => sub.userId),
         mentor,
         post,
         signalDetails: parsedSignalDetails,
       });
-      console.log(res, "tg");
-      // }
     }
 
     return res.status(201).json({
@@ -483,7 +480,7 @@ export const submitReview = async (req, res) => {
   const { mentorId } = req.params;
   const { rating, review } = req.body;
   const auth = req.user;
-  const userId = auth.userID;
+  const userId = auth.userId;
 
   try {
     const mentor = await Mentor.findById(mentorId);

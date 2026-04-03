@@ -1,10 +1,11 @@
 import crypto from "crypto";
-import UserModel from "../models/User.js"; 
+import UserModel from "../models/User.js";
 import { decryptText, encryptText } from "../utils/ctraderCrypto.js";
 import {
   refreshCtraderTokenIfNeeded,
   fetchCtraderAccounts,
 } from "../utils/ctraderApi.js";
+import { createAndSendNotification } from "../services/Notification.js";
 
 const {
   CTRADER_CLIENT_ID,
@@ -39,7 +40,6 @@ function base64urlDecodeToBuffer(str) {
 }
 
 function getCtraderClientSecret() {
-  // allow either env name
   return CTRADER_CLIENT_SECRET;
 }
 
@@ -57,7 +57,6 @@ function signState(payloadObj) {
   return `${payload}.${sig}`;
 }
 
-// ✅ FIXED: compare RAW signature BYTES, not utf8 characters of base64 text
 function verifyState(state) {
   mustEnv("CTRADER_STATE_HMAC_SECRET", CTRADER_STATE_HMAC_SECRET);
 
@@ -102,7 +101,7 @@ export const connectUrl = async (req, res) => {
 
   const stateObj = {
     uid: String(userId),
-    aud: String(CTRADER_CLIENT_ID), // ✅ bind to this OAuth client
+    aud: String(CTRADER_CLIENT_ID),
     nonce: crypto.randomBytes(16).toString("hex"),
     exp: Date.now() + 10 * 60 * 1000,
   };
@@ -176,8 +175,6 @@ export const callback = async (req, res) => {
     });
 
     const data = await tokenRes.json();
-    console.log("cTrader token response:", data);
-
     const accessToken = data.accessToken || data.access_token;
     const refreshToken = data.refreshToken || data.refresh_token;
     const expiresIn = Number(data.expiresIn || data.expires_in);
@@ -206,6 +203,16 @@ export const callback = async (req, res) => {
         },
       },
     );
+
+    await createAndSendNotification({
+      io: req.app.get("io"),
+      recipient: userId,
+      title: "cTrader connected",
+      message: "Your cTrader account was connected successfully.",
+      type: "app_update",
+      linkTo: "/settings?tab=ctrader",
+      dedupeKey: `ctrader_connected_${userId}_${code}`,
+    });
 
     res.clearCookie("ctrader_oauth_state", { path: "/" });
     return res.redirect(
@@ -371,7 +378,7 @@ export const setCtraderSettings = async (req, res) => {
   if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
   const { accountId, autoTradeEnabled } = req.body ?? {};
-  console.log(accountId, autoTradeEnabled)
+  console.log(accountId, autoTradeEnabled);
 
   const patch = {};
   if (typeof autoTradeEnabled === "boolean") {
@@ -432,7 +439,7 @@ export const setCtraderSettings = async (req, res) => {
 
 export const setAutoTrade = async (req, res) => {
   try {
-     const userId = req.user?.userId || req.user?._id;
+    const userId = req.user?.userId || req.user?._id;
 
     const { enabled, accountId } = req.body;
 
@@ -443,7 +450,9 @@ export const setAutoTrade = async (req, res) => {
     const user = await UserModel.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    const planRaw = (user.plan || user.subscribedPlan || "").toString().toUpperCase();
+    const planRaw = (user.plan || user.subscribedPlan || "")
+      .toString()
+      .toUpperCase();
     const isPaid = planRaw === "PRO" || planRaw === "PREMIUM";
     if (!isPaid) {
       return res.status(403).json({

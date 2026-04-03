@@ -106,6 +106,7 @@ export const io = new Server(server, {
     credentials: true,
   },
 });
+app.set("io", io);
 
 registerNotificationSocket(io);
 registerTelegramHandlers();

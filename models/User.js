@@ -39,6 +39,15 @@ export const CTraderSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const TradeSettingsSchema = new mongoose.Schema(
+  {
+    balance: { type: String, default: "0" },
+    risk: { type: String, default: "1" },
+    currency: { type: String, default: "USD" },
+  },
+  { _id: false },
+);
+
 export const NotificationSettingsSchema = new mongoose.Schema({
   email: { type: Boolean, default: false },
   push: { type: Boolean, default: true },
@@ -93,6 +102,11 @@ const UserSchema = new mongoose.Schema(
       country: { type: String, default: null },
       city: { type: String, default: null },
       region: { type: String, default: null },
+    },
+
+    tradeSettings: {
+      type: TradeSettingsSchema,
+      default: () => ({}),
     },
 
     isMentor: { type: Boolean, default: false },

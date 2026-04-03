@@ -25,6 +25,7 @@ const NotificationSchema = new mongoose.Schema(
         "news",
         "system",
         "app_update",
+        "info"
       ],
       required: true,
       index: true,
