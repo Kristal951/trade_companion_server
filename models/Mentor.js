@@ -7,7 +7,7 @@ const CertificationSchema = new Schema(
     name: { type: String, required: true },
     url: { type: String, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const RecentSignalSchema = new Schema({
@@ -26,7 +26,7 @@ const SubscriberGrowthSchema = new Schema(
     month: { type: String, required: true },
     subscribers: { type: Number, required: true },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const SubscriberSchema = new Schema(
@@ -38,16 +38,24 @@ const SubscriberSchema = new Schema(
     },
     name: { type: String, required: true },
     avatar: { type: String },
-    subscribedDate: { type: Date, default: Date.now },
+
+    stripeCustomerId: { type: String },
     stripeSubscriptionId: { type: String },
+
+    subscribedDate: { type: Date, default: Date.now },
+    currentPeriodEnd: { type: Date },
+    lastPaidAt: { type: Date },
+    endedAt: { type: Date },
+
     status: {
       type: String,
-      enum: ["Active", "Cancelled"],
+      enum: ["Active", "Past Due", "Unpaid", "Incomplete", "Cancelled"],
       default: "Active",
     },
-    ratingGiven: { type: Number, min: 0, max: 5 }, 
+
+    ratingGiven: { type: Number, min: 0, max: 5 },
   },
-  { _id: false } 
+  { _id: false },
 );
 
 const EarningsSchema = new Schema(
@@ -55,7 +63,7 @@ const EarningsSchema = new Schema(
     currentBalance: { type: Number, default: 0 },
     lifetime: { type: Number, default: 0 },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const PayoutSchema = new Schema(
@@ -68,7 +76,7 @@ const PayoutSchema = new Schema(
       default: "Pending",
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const DocumentSchema = new Schema(
@@ -81,7 +89,7 @@ const DocumentSchema = new Schema(
     type: { type: String },
     fileName: { type: String },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const IdentitySchema = new Schema(
@@ -129,7 +137,7 @@ const IdentitySchema = new Schema(
     },
     rejectionReason: String,
   },
-  { _id: false }
+  { _id: false },
 );
 
 const AnalyticsSchema = new Schema(
@@ -155,7 +163,7 @@ const AnalyticsSchema = new Schema(
     ],
     topSignals: [RecentSignalSchema],
   },
-  { _id: false }
+  { _id: false },
 );
 
 const ReviewSchema = new Schema(
@@ -165,7 +173,7 @@ const ReviewSchema = new Schema(
     review: { type: String, default: "" },
     createdAt: { type: Date, default: Date.now },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const MentorSchema = new Schema(
@@ -211,7 +219,8 @@ const MentorSchema = new Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
-export default mongoose.model("Mentor", MentorSchema);
+const MentorModel = mongoose.model("Mentor", MentorSchema);
+export default MentorModel;

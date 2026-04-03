@@ -33,7 +33,7 @@ router.patch(
   updateMentor
 );
 router.get("/getMentorByID/:mentorID", getMentorByID)
-router.post("/review/:mentorId", submitReview);
+router.post("/review/:mentorId", authenticateUser, submitReview);
 router.post('/checkout', authenticateUser, createMentorCheckout)
 
 export default router;

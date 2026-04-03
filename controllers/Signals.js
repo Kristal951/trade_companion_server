@@ -1,6 +1,7 @@
 // controllers/tradeSignalController.js
 import mongoose from "mongoose";
 import { TradeSignal } from "../models/TradeSignal.js";
+import { runSignalScanJob } from "../jobs/runSignalScanJob.js";
 
 /**
  * Build a stable dedupe key so identical signals can't be saved twice.
@@ -8,8 +9,12 @@ import { TradeSignal } from "../models/TradeSignal.js";
  */
 function makeDedupeKey(body) {
   const userId = String(body.userId || "").trim();
-  const instrument = String(body.instrument || "").trim().toUpperCase();
-  const type = String(body.type || "").trim().toUpperCase(); // BUY/SELL
+  const instrument = String(body.instrument || "")
+    .trim()
+    .toUpperCase();
+  const type = String(body.type || "")
+    .trim()
+    .toUpperCase(); // BUY/SELL
 
   const ep = Number(body.entryPrice);
   const sl = Number(body.stopLoss);
@@ -119,13 +124,12 @@ export const save_signal = async (req, res) => {
       takeProfits: tps,
       confidence: confidence == null ? null : Number(confidence),
       reasoning: reasoning == null ? null : String(reasoning),
-      technicalReasoning: technicalReasoning == null ? null : String(technicalReasoning),
+      technicalReasoning:
+        technicalReasoning == null ? null : String(technicalReasoning),
       lotSize: lotSize == null ? null : Number(lotSize),
       riskAmount: riskAmount == null ? null : Number(riskAmount),
       meta:
-        meta && typeof meta === "object" && !Array.isArray(meta)
-          ? meta
-          : null,
+        meta && typeof meta === "object" && !Array.isArray(meta) ? meta : null,
 
       dedupeKey,
       status: "NEW",
@@ -139,7 +143,9 @@ export const save_signal = async (req, res) => {
         .json({ ok: false, message: "Signal already saved (duplicate)." });
     }
     console.error("save_signal error:", error);
-    return res.status(500).json({ ok: false, message: "Failed to save signal" });
+    return res
+      .status(500)
+      .json({ ok: false, message: "Failed to save signal" });
   }
 };
 
@@ -160,7 +166,9 @@ export const markSignalAsExecuted = async (req, res) => {
 
   const parsedExecutedAt = executedAt ? new Date(executedAt) : new Date();
   if (Number.isNaN(parsedExecutedAt.getTime())) {
-    return res.status(400).json({ ok: false, error: "executedAt must be a valid date" });
+    return res
+      .status(400)
+      .json({ ok: false, error: "executedAt must be a valid date" });
   }
 
   const set = {
@@ -175,14 +183,18 @@ export const markSignalAsExecuted = async (req, res) => {
 
   try {
     const signal = await TradeSignal.findOneAndUpdate(
-      { _id: id, status: { $nin: ["EXECUTED", "CANCELLED", "EXPIRED", "CLOSED"] } },
+      {
+        _id: id,
+        status: { $nin: ["EXECUTED", "CANCELLED", "EXPIRED", "CLOSED"] },
+      },
       { $set: set },
-      { new: true }
+      { new: true },
     );
 
     if (!signal) {
       const existing = await TradeSignal.findById(id);
-      if (!existing) return res.status(404).json({ ok: false, error: "Signal not found" });
+      if (!existing)
+        return res.status(404).json({ ok: false, error: "Signal not found" });
 
       if (existing.status === "EXECUTED") {
         return res.status(200).json({
@@ -201,7 +213,9 @@ export const markSignalAsExecuted = async (req, res) => {
     return res.status(200).json({ ok: true, signal });
   } catch (error) {
     console.error("markSignalAsExecuted error:", error);
-    return res.status(500).json({ ok: false, message: "Failed to mark executed" });
+    return res
+      .status(500)
+      .json({ ok: false, message: "Failed to mark executed" });
   }
 };
 
@@ -273,7 +287,9 @@ export const getAllAISignals = async (req, res) => {
     });
   } catch (error) {
     console.error("getAllAISignals error:", error);
-    return res.status(500).json({ ok: false, message: "Failed to fetch AI signals" });
+    return res
+      .status(500)
+      .json({ ok: false, message: "Failed to fetch AI signals" });
   }
 };
 
@@ -366,5 +382,129 @@ export const getAISignalsForUser = async (req, res) => {
       ok: false,
       message: "Failed to fetch user AI signals",
     });
+  }
+};
+export const scanForSignals = async (req, res) => {
+  console.log("scan-signals route hit");
+  console.log("auth header:", req.headers.authorization);
+  try {
+    const authHeader = req.headers.authorization;
+    const expected = `Bearer ${process.env.CRON_SECRET}`;
+
+    if (!process.env.CRON_SECRET) {
+      console.log("CRON_SECRET missing");
+      return res
+        .status(500)
+        .json({ ok: false, error: "CRON_SECRET is missing on server" });
+    }
+
+    if (authHeader !== expected) {
+      console.log(authHeader, expected);
+      console.log("Unauthorized request");
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    console.log("Authorization passed");
+    const summary = await runSignalScanJob();
+    console.log("Job finished:", summary);
+
+    return res.json({
+      ok: true,
+      ranAt: new Date().toISOString(),
+      summary,
+    });
+  } catch (error) {
+    console.error("scan-signals job failed:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Job failed",
+    });
+  }
+};
+
+export const getUserSignals = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { limit = 100, status } = req.query;
+
+    const query = {
+      userId: String(userId),
+    };
+
+    if (status) {
+      query.status = status.toUpperCase();
+    }
+
+    const signals = await TradeSignal.find(query)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .lean();
+
+    return res.json({
+      ok: true,
+      count: signals.length,
+      signals,
+    });
+  } catch (error) {
+    console.error("GET /my-signals error:", error);
+
+    return res.status(500).json({
+      ok: false,
+      message: "Failed to fetch signals",
+    });
+  }
+};
+export const getActiveSignals = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id || req.user.userId;
+    console.log(userId)
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const skip = (page - 1) * limit;
+
+    const query = {
+      userId,
+      status: { $in: ["NEW", "EXECUTED"] },
+    };
+
+    const [signals, total, totalSigs] = await Promise.all([
+      TradeSignal.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+
+      TradeSignal.countDocuments(query),
+
+     TradeSignal.find({ userId: userId })
+    ]);
+
+    console.log(signals, totalSigs)
+
+    res.json({
+      data: signals,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch signals" });
   }
 };
