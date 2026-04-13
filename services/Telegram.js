@@ -101,7 +101,6 @@ export const startTelegramBot = () => {
 
   try {
     registerTelegramHandlers();
-    telegramBot.startPolling();
     console.log("✅ Telegram Bot started successfully.");
   } catch (error) {
     console.error("❌ Failed to start Telegram Bot:", error.message);

@@ -4,7 +4,7 @@ import { getIO } from "../sockets/io.js";
 
 // --------------------
 // Redis Clients
-// --------------------
+
 export const redisPublisher = createClient({
   url: process.env.REDIS_URL,
 });
@@ -44,6 +44,8 @@ redisSubscriber.on("error", (err) => {
 // Init Redis
 // --------------------
 export const initRedis = async () => {
+  // --------------------
+  console.log("🔥 ENV REDIS_URL =", process.env.REDIS_URL);
   console.log("connecting redis...");
 
   if (!redisPublisher.isOpen) {
