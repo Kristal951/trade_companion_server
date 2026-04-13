@@ -1,32 +1,26 @@
 import { Queue, QueueEvents } from "bullmq";
-import IORedis from "ioredis";
 
 // =========================
-// ✅ Redis redis (singleton)
+// ✅ Redis connection (Railway-safe)
 // =========================
-export const redis = new IORedis(process.env.REDIS_URL, {
+const connection = {
+  url: process.env.REDIS_URL,
   maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-  reconnectOnError: (err) => {
-    console.error("[REDIS ERROR]", err.message);
-    return true;
-  },
-});
+};
 
-// Logs
-redis.on("connect", () => {
-  console.log("Redis connected ✅");
-});
+// hard fail if missing (prevents silent localhost fallback)
+if (!process.env.REDIS_URL) {
+  throw new Error("❌ REDIS_URL is missing in environment variables");
+}
 
-redis.on("error", (err) => {
-  console.error("Redis error ❌", err);
-});
+// optional debug
+console.log("🔥 BullMQ REDIS_URL =", process.env.REDIS_URL);
 
 // =========================
 // ✅ Queue
 // =========================
 export const ctraderQueue = new Queue("ctrader-trades", {
-  redis,
+  connection,
   defaultJobOptions: {
     attempts: 3,
     backoff: {
@@ -42,9 +36,12 @@ export const ctraderQueue = new Queue("ctrader-trades", {
 // ✅ Queue Events
 // =========================
 export const ctraderQueueEvents = new QueueEvents("ctrader-trades", {
-  redis,
+  connection,
 });
 
+// =========================
+// Logs
+// =========================
 ctraderQueueEvents.on("completed", ({ jobId }) => {
   console.log(`[QUEUE COMPLETED] jobId=${jobId}`);
 });
