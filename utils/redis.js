@@ -1,122 +1,142 @@
-import { createClient } from "redis";
+import IORedis from "ioredis";
 import { getLivePrice } from "../services/marketDataServices.js";
 import { getIO } from "../sockets/io.js";
 
-// --------------------
-// Redis Clients
+// =========================
+// ✅ Redis Connection Setup
+// =========================
 
-export const redisPublisher = createClient({
-  url: process.env.REDIS_URL,
-});
+// ioredis connects automatically upon instantiation.
+// We set maxRetriesPerRequest to null for compatibility with BullMQ.
+const connectionOptions = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
+  reconnectOnError: (err) => {
+    const targetError = "READONLY";
+    if (err.message.includes(targetError)) return true;
+    return false;
+  },
+};
 
-export const redisSubscriber = createClient({
-  url: process.env.REDIS_URL,
-});
+const REDIS_URL = process.env.REDIS_URL;
 
-// --------------------
-// Redis Events
-// --------------------
-redisPublisher.on("connect", () => {
-  console.log("🔌 Redis Publisher connecting...");
-});
+if (!REDIS_URL) {
+  console.warn("⚠️ REDIS_URL is missing. Redis features will fail.");
+}
 
-redisPublisher.on("ready", () => {
-  console.log("✅ Redis Publisher ready");
-});
+// Client for general GET/SET operations (Caching)
+export const redis = new IORedis(REDIS_URL, connectionOptions);
 
-redisPublisher.on("error", (err) => {
-  console.error("❌ Redis Publisher error:", err);
-});
+// Client for Publishing messages
+export const redisPublisher = new IORedis(REDIS_URL, connectionOptions);
 
-redisSubscriber.on("connect", () => {
-  console.log("🔌 Redis Subscriber connecting...");
-});
+// Client for Subscribing to channels
+export const redisSubscriber = new IORedis(REDIS_URL, connectionOptions);
 
-redisSubscriber.on("ready", () => {
-  console.log("✅ Redis Subscriber ready");
-});
+// =========================
+// ✅ Status & Event Logging
+// =========================
 
-redisSubscriber.on("error", (err) => {
-  console.error("❌ Redis Subscriber error:", err);
-});
+const logEvents = (client, name) => {
+  client.on("connect", () => console.log(`🔌 Redis ${name} connecting...`));
+  client.on("ready", () => console.log(`✅ Redis ${name} ready`));
+  client.on("error", (err) =>
+    console.error(`❌ Redis ${name} error:`, err.message),
+  );
+};
 
-// --------------------
-// Init Redis
-// --------------------
+logEvents(redis, "Main");
+logEvents(redisPublisher, "Publisher");
+logEvents(redisSubscriber, "Subscriber");
+
+// =========================
+// ✅ Initialization Logic
+// =========================
+
+let initialized = false;
+
 export const initRedis = async () => {
-  // --------------------
-  console.log("🔥 ENV REDIS_URL =", process.env.REDIS_URL);
-  console.log("connecting redis...");
+  if (initialized) return;
 
-  if (!redisPublisher.isOpen) {
-    await redisPublisher.connect();
+  // Wait for the subscriber to be ready before calling .subscribe()
+  if (redisSubscriber.status !== "ready") {
+    await new Promise((resolve) => {
+      redisSubscriber.once("ready", resolve);
+    });
   }
 
-  if (!redisSubscriber.isOpen) {
-    await redisSubscriber.connect();
+  try {
+    await redisSubscriber.subscribe("trade_events");
+    console.log("📡 Subscribed to trade_events");
+
+    redisSubscriber.on("message", async (channel, message) => {
+      if (channel === "trade_events") {
+        await handleTradeEvent(message);
+      }
+    });
+
+    initialized = true;
+  } catch (err) {
+    console.error("❌ Redis Init Error:", err.message);
+  }
+};
+
+// =========================
+// ✅ Trade Event Handler
+// =========================
+
+async function handleTradeEvent(message) {
+  let event;
+  try {
+    event = JSON.parse(message);
+  } catch (err) {
+    return console.error("❌ Invalid JSON in Redis message");
   }
 
-  // Subscribe AFTER connection is ready
-  await redisSubscriber.subscribe("trade_events", async (message) => {
-    let event;
+  const { instrument, entryPrice, lotSize, userId, direction } = event;
 
-    try {
-      event = JSON.parse(message);
-    } catch (err) {
-      console.error("❌ Invalid Redis message:", message);
-      return;
+  try {
+    // Get live price to calculate floating PnL for the real-time UI
+    const priceData = await getLivePrice(instrument);
+    const currentPrice = priceData?.price;
+
+    let pnl = 0;
+    if (currentPrice && entryPrice) {
+      // Note: In production, fetch actual contractSize from getBrokerSymbolSpecs
+      const multiplier = 100000;
+      pnl =
+        direction.toLowerCase() === "sell"
+          ? (entryPrice - currentPrice) * lotSize * multiplier
+          : (currentPrice - entryPrice) * lotSize * multiplier;
     }
 
-    const { instrument, entryPrice, lotSize, userId, direction } = event;
-
-    try {
-      const priceData = await getLivePrice(instrument);
-      const currentPrice = priceData?.price;
-
-      let pnl = 0;
-
-      if (currentPrice && entryPrice) {
-        const multiplier = 100000;
-
-        if (direction === "sell") {
-          pnl = (entryPrice - currentPrice) * lotSize * multiplier;
-        } else {
-          pnl = (currentPrice - entryPrice) * lotSize * multiplier;
-        }
-      }
-
-      const io = getIO();
-
+    const io = getIO();
+    if (io) {
       io.to(userId).emit("trade_update", {
         ...event,
         currentPrice,
-        pnl,
+        pnl: Number(pnl.toFixed(2)),
         timestamp: Date.now(),
       });
-    } catch (err) {
-      console.error("❌ Error processing trade event:", err);
     }
-  });
-};
+  } catch (err) {
+    console.error("❌ Error processing trade event:", err.message);
+  }
+}
 
-// --------------------
-// Symbol Key Helper
-// --------------------
+// =========================
+// ✅ Helper Methods (Caching)
+// =========================
+
 export const getSymbolKey = (symbolId) => `ctrader:symbol:${symbolId}`;
 
-// --------------------
-// Broker Symbol Specs (Cached)
-// --------------------
 export async function getBrokerSymbolSpecs(ctraderClient, symbolId) {
   const key = getSymbolKey(symbolId);
 
-  const cached = await redisPublisher.get(key);
-  if (cached) {
-    return JSON.parse(cached);
-  }
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached);
 
   const symbol = await ctraderClient.getSymbolById(symbolId);
-
   const specs = {
     symbolId: symbol.symbolId,
     digits: symbol.digits,
@@ -127,7 +147,7 @@ export async function getBrokerSymbolSpecs(ctraderClient, symbolId) {
     contractSize: symbol.contractSize,
   };
 
-  await redisPublisher.setEx(key, 3600, JSON.stringify(specs));
-
+  // Cache specs for 1 hour
+  await redis.set(key, JSON.stringify(specs), "EX", 3600);
   return specs;
 }
