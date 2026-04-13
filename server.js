@@ -23,7 +23,6 @@ import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { ExpressAdapter } from "@bull-board/express";
 import { ctraderQueue } from "./queues/ctrader.js";
 
-import { initRedis } from "./utils/redis.js";
 import { connectDB } from "./utils/connectDB.js";
 import { startActiveTradeStream } from "./services/activeTradeStream.js";
 import { initIO, getIO } from "./sockets/io.js";
@@ -36,14 +35,13 @@ const server = http.createServer(app);
 const PORT = process.env.PORT_NUMBER || 5000;
 
 /* =========================
-   SOCKET.IO INIT
+   SOCKET.IO INIT (ONLY ONCE)
 ========================= */
 initIO(server);
 
 /* =========================
    CORS CONFIG
 ========================= */
-
 const allowedOrigins = new Set(
   [
     process.env.FRONTEND_URI_1,
@@ -72,7 +70,6 @@ const corsOptions = {
 /* =========================
    BULL BOARD
 ========================= */
-
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath("/admin/queues");
 
@@ -84,7 +81,6 @@ createBullBoard({
 /* =========================
    STRIPE WEBHOOK (MUST BE FIRST)
 ========================= */
-
 app.use(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -93,7 +89,6 @@ app.use(
 /* =========================
    MIDDLEWARE
 ========================= */
-
 app.set("trust proxy", true);
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
@@ -104,7 +99,6 @@ app.use(express.json({ limit: "10mb" }));
 /* =========================
    BASIC ROUTE
 ========================= */
-
 app.get("/", (_req, res) => {
   res.send("🚀 Server is running...");
 });
@@ -112,7 +106,6 @@ app.get("/", (_req, res) => {
 /* =========================
    ROUTES
 ========================= */
-
 app.use("/api/user", userRoutes);
 app.use("/api/mentor", mentorRoutes);
 app.use("/api/stripe", StripeRoutes);
@@ -125,9 +118,8 @@ app.use("/api/market", marketRoutes);
 app.use("/api/trades", TradeRoutes);
 
 /* =========================
-   BULL BOARD AUTH (FIXED ORDER)
+   BULL BOARD AUTH
 ========================= */
-
 app.use("/admin/queues", (req, res, next) => {
   const auth = {
     login: process.env.ADMIN_USER || "admin",
@@ -152,7 +144,6 @@ app.use("/admin/queues", serverAdapter.getRouter());
 /* =========================
    ERROR HANDLING
 ========================= */
-
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
@@ -171,31 +162,30 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================
-   START SERVER (SAFE ORDER)
+   START SERVER (CLEAN ORDER)
 ========================= */
-
 const startServer = async () => {
   try {
     console.log("🚀 Starting server...");
 
+    // DB first
     await connectDB();
     console.log("✅ Database connected");
 
-    await initRedis();
-    console.log("✅ Redis initialized");
-
-    initIO(server);
+    // Socket already initialized at top (IMPORTANT)
 
     const io = getIO();
 
+    // Services
     startActiveTradeStream();
     registerNotificationSocket(io);
-
     startTelegramBot();
 
+    // Start HTTP server LAST
     server.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
     });
+
   } catch (err) {
     console.error("❌ Startup failed:", err.message);
     process.exit(1);
