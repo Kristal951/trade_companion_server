@@ -16,6 +16,7 @@ const {
   NODE_ENV = "development",
   CTRADER_STATE_HMAC_SECRET,
 } = process.env;
+const processedCodes = new Set();
 
 function mustEnv(name, val) {
   if (!val) throw new Error(`Missing env: ${name}`);
@@ -95,6 +96,19 @@ export const connectUrl = async (req, res) => {
   const userId = req.user?.userId || req.user?._id;
   if (!userId) return res.status(401).send("Unauthorized");
 
+  const user = await UserModel.findById(userId);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const allowedPlans = ["premium", "pro"];
+  const userPlan = user.subscribedPlan?.toLowerCase();
+
+  if (!allowedPlans.includes(userPlan)) {
+    return res.status(403).json({
+      message:
+        "Access denied. This feature requires a Premium or Pro subscription.",
+    });
+  }
+
   mustEnv("CTRADER_CLIENT_ID", CTRADER_CLIENT_ID);
   mustEnv("CTRADER_REDIRECT_URI", CTRADER_REDIRECT_URI);
   mustEnv("CTRADER_STATE_HMAC_SECRET", CTRADER_STATE_HMAC_SECRET);
@@ -133,59 +147,109 @@ export const callback = async (req, res) => {
   if (!code) return res.status(400).send("Missing code");
   if (!state) return res.status(400).send("Missing state");
 
-  const stateCookie = req.cookies?.ctrader_oauth_state;
-  if (!stateCookie)
-    return res.status(400).send("Security error: Missing state cookie");
-
-  if (String(stateCookie) !== String(state)) {
-    return res
-      .status(400)
-      .send("Security error: State mismatch or session expired");
+  if (processedCodes.has(code)) {
+    return res.status(400).send("Code already processed");
   }
 
-  const decoded = verifyState(state);
-  if (!decoded) return res.status(400).send("Invalid state");
-  if (Date.now() > Number(decoded.exp || 0))
-    return res.status(400).send("State expired");
-  if (String(decoded.aud) !== String(CTRADER_CLIENT_ID)) {
-    return res.status(400).send("Invalid state audience");
-  }
+  processedCodes.add(code);
 
-  const userId = decoded.uid;
-  if (!userId) return res.status(400).send("User identification failed");
+  console.log("OAuth callback hit:", {
+    state,
+    time: new Date().toISOString(),
+  });
 
   try {
+    const stateCookie = req.cookies?.ctrader_oauth_state;
+    console.log(stateCookie);
+    if (!stateCookie) {
+      return res.status(400).send("Security error: Missing state cookie");
+    }
+
+    if (String(stateCookie) !== String(state)) {
+      return res
+        .status(400)
+        .send("Security error: State mismatch or session expired");
+    }
+
+    const decoded = verifyState(state);
+    if (!decoded) return res.status(400).send("Invalid state");
+
+    if (Date.now() > Number(decoded.exp || 0)) {
+      return res.status(400).send("State expired");
+    }
+
+    if (String(decoded.aud) !== String(CTRADER_CLIENT_ID)) {
+      return res.status(400).send("Invalid state audience");
+    }
+
+    const userId = decoded.uid;
+    if (!userId) {
+      return res.status(400).send("User identification failed");
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     mustEnv("CTRADER_CLIENT_ID", CTRADER_CLIENT_ID);
     mustEnv("CTRADER_REDIRECT_URI", CTRADER_REDIRECT_URI);
 
     const clientSecret = getCtraderClientSecret();
     mustEnv("CTRADER_CLIENT_SECRET (or CTRADER_SECRET_ID)", clientSecret);
 
-    const tokenUrl =
-      `https://openapi.ctrader.com/apps/token` +
-      `?grant_type=authorization_code` +
-      `&code=${encodeURIComponent(code)}` +
-      `&redirect_uri=${encodeURIComponent(CTRADER_REDIRECT_URI)}` +
-      `&client_id=${encodeURIComponent(CTRADER_CLIENT_ID)}` +
-      `&client_secret=${encodeURIComponent(clientSecret)}`;
-
-    const tokenRes = await fetch(tokenUrl, {
-      method: "GET",
-      headers: { Accept: "application/json" },
+    const tokenRes = await fetch("https://openapi.ctrader.com/apps/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: CTRADER_REDIRECT_URI,
+        client_id: CTRADER_CLIENT_ID,
+        client_secret: clientSecret,
+      }),
     });
 
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text();
+      console.error("Token exchange failed:", errText);
+      return res.status(400).send("Token exchange failed");
+    }
+
     const data = await tokenRes.json();
-    const accessToken = data.accessToken || data.access_token;
-    const refreshToken = data.refreshToken || data.refresh_token;
-    const expiresIn = Number(data.expiresIn || data.expires_in);
+    console.log(data);
+
+    const accessToken = data.access_token || data.accessToken;
+    const refreshToken = data.refresh_token || data.refreshToken;
+    const expiresIn = Number(data.expires_in || data.expiresIn);
+
+    console.log("Token response received");
 
     if (!accessToken || !refreshToken || !Number.isFinite(expiresIn)) {
       return res.status(400).send("Token response missing required fields");
     }
 
+    const accounts = await fetchCtraderAccounts(accessToken);
+
+    const defaultAccount = accounts[0]?.accountId
+      ? String(accounts[0].accountId)
+      : null;
+
+    const selectedAccountId = user.cTraderConfig?.accountId || defaultAccount;
+
+    const selectedAccount = accounts.find(
+      (acc) => String(acc.accountId) === selectedAccountId,
+    );
+    console.log(selectedAccount, "account");
+
+    if (!selectedAccount) {
+      return res.status(400).send("Selected cTrader account not found");
+    }
     const acquiredAt = new Date();
     const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
     const accessTokenEnc = encryptText(accessToken);
     const refreshTokenEnc = encryptText(refreshToken);
 
@@ -196,9 +260,16 @@ export const callback = async (req, res) => {
           "cTraderConfig.accessTokenEnc": accessTokenEnc,
           "cTraderConfig.refreshTokenEnc": refreshTokenEnc,
           "cTraderConfig.acquiredAt": acquiredAt,
+          "cTraderConfig.accountId": selectedAccountId,
+          "cTraderConfig.cachedBalance": selectedAccount?.balance ?? 0,
+          "cTraderConfig.cachedEquity": selectedAccount?.equity ?? 0,
+          "cTraderConfig.cachedMargin": selectedAccount?.margin ?? 0,
+          "tradeSettings.balance": selectedAccount?.balance ?? 0,
+          "cTraderConfig.lastSyncedAt": new Date(),
           "cTraderConfig.expiresAt": expiresAt,
           "cTraderConfig.scope": data.scope ?? null,
-          "cTraderConfig.tokenType": data.tokenType ?? "bearer",
+          "cTraderConfig.tokenType":
+            data.token_type ?? data.tokenType ?? "bearer",
           "cTraderConfig.isConnected": true,
         },
       },
@@ -214,7 +285,9 @@ export const callback = async (req, res) => {
       dedupeKey: `ctrader_connected_${userId}_${code}`,
     });
 
+    // Clear OAuth state cookie
     res.clearCookie("ctrader_oauth_state", { path: "/" });
+
     return res.redirect(
       `${FRONTEND_BASE_URL}/settings?tab=ctrader&linked=success`,
     );
@@ -250,9 +323,16 @@ export const getStatus = async (req, res) => {
       expiresAt: cfg.expiresAt,
     });
 
+    if (!refreshed?.accessToken) {
+      throw new Error("Token refresh failed");
+    }
+
     accessToken = refreshed.accessToken;
 
     const accounts = await fetchCtraderAccounts(accessToken);
+    const defaultAccountId = accounts.length
+      ? String(accounts[0].accountId)
+      : null;
 
     return res.json({
       connected: true,
@@ -273,9 +353,7 @@ export const getStatus = async (req, res) => {
         swapFree: !!a.swapFree,
         moneyDigits: a.moneyDigits,
       })),
-      activeAccountId:
-        cfg.accountId ??
-        (accounts[0]?.accountId ? String(accounts[0].accountId) : null),
+      activeAccountId: cfg.accountId || defaultAccountId,
     });
   } catch (err) {
     console.error("getStatus error:", err);
@@ -304,47 +382,68 @@ export const getStatus = async (req, res) => {
 
 export const setActiveAccount = async (req, res) => {
   const userId = req.user?.userId || req.user?._id;
-  if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-  const { accountId } = req.body;
-  if (!accountId)
-    return res.status(400).json({ message: "accountId is required" });
-
-  const user = await UserModel.findOne({ _id: userId }).select(
-    "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc",
-  );
-
-  const cfg = user?.cTraderConfig;
-  if (!cfg?.isConnected)
-    return res.status(400).json({ message: "Not connected" });
-
-  let accessToken = decryptText(cfg.accessTokenEnc);
-  const refreshToken = decryptText(cfg.refreshTokenEnc);
-
-  const refreshed = await refreshCtraderTokenIfNeeded({
-    userId,
-    accessToken,
-    refreshToken,
-    expiresAt: cfg.expiresAt,
-  });
-
-  accessToken = refreshed.accessToken;
-
-  const accounts = await fetchCtraderAccounts(accessToken);
-
-  const exists = accounts.some(
-    (a) => String(a.accountId) === String(accountId),
-  );
-  if (!exists) {
-    return res.status(400).json({ message: "Account not found for this user" });
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
-  await UserModel.updateOne(
-    { _id: userId },
-    { $set: { "cTraderConfig.accountId": String(accountId) } },
-  );
+  const { accountId } = req.body;
 
-  return res.json({ success: true, activeAccountId: String(accountId) });
+  if (!accountId) {
+    return res.status(400).json({ message: "accountId is required" });
+  }
+
+  try {
+    const user = await UserModel.findOne({ _id: userId }).select(
+      "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc",
+    );
+
+    const cfg = user?.cTraderConfig;
+
+    if (!cfg?.isConnected) {
+      return res.status(400).json({ message: "Not connected" });
+    }
+
+    let accessToken = decryptText(cfg.accessTokenEnc);
+    const refreshToken = decryptText(cfg.refreshTokenEnc);
+
+    const refreshed = await refreshCtraderTokenIfNeeded({
+      userId,
+      accessToken,
+      refreshToken,
+      expiresAt: cfg.expiresAt,
+    });
+
+    accessToken = refreshed.accessToken;
+
+    const accounts = await fetchCtraderAccounts(accessToken);
+
+    const account = accounts.find(
+      (a) => String(a.accountId) === String(accountId),
+    );
+
+    if (!account) {
+      return res.status(400).json({
+        message: "Account not found for this user",
+      });
+    }
+
+    await UserModel.updateOne(
+      { _id: userId },
+      { $set: { "cTraderConfig.accountId": String(accountId) } },
+    );
+
+    return res.json({
+      success: true,
+      activeAccountId: String(accountId),
+      accountBalance: account.balance,
+    });
+  } catch (error) {
+    console.error("setActiveAccount error:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
 };
 
 export const disconnectCtrader = async (req, res) => {
@@ -395,6 +494,10 @@ export const setCtraderSettings = async (req, res) => {
   const user = await UserModel.findById(userId).select(
     "+cTraderConfig.accessTokenEnc +cTraderConfig.refreshTokenEnc",
   );
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
 
   const cfg = user?.cTraderConfig;
   if (!cfg?.isConnected || !cfg?.refreshTokenEnc?.data) {
@@ -473,13 +576,16 @@ export const setAutoTrade = async (req, res) => {
       });
     }
 
-    user.cTraderConfig = {
-      accountId: String(finalAccountId),
-      isConnected: true,
-      autoTradeEnabled: enabled,
-    };
-
-    await user.save();
+    await UserModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          "cTraderConfig.accountId": String(finalAccountId),
+          "cTraderConfig.autoTradeEnabled": enabled,
+          "cTraderConfig.isConnected": true,
+        },
+      },
+    );
 
     return res.status(200).json({
       success: true,
@@ -492,5 +598,50 @@ export const setAutoTrade = async (req, res) => {
   } catch (err) {
     console.error("setAutoTrade error:", err);
     return res.status(500).json({ message: "Failed to update auto-trading." });
+  }
+};
+
+export const setAllowedPairs = async (req, res) => {
+  const { pairs } = req.body;
+  const userId = req.user?.userId || req.user?._id;
+
+  if (!Array.isArray(pairs)) {
+    return res.status(400).json({ error: "Pairs must be an array" });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: "User not authenticated" });
+  }
+
+  try {
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Ensure config exists
+    if (!user.cTraderConfig) {
+      user.cTraderConfig = {};
+    }
+
+    // Clean pairs
+    const cleanedPairs = [
+      ...new Set(pairs.filter((p) => typeof p === "string" && p.trim() !== "")),
+    ];
+
+    user.cTraderConfig.allowedPairs = cleanedPairs;
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Allowed pairs updated successfully",
+      allowedPairs: user.cTraderConfig.allowedPairs,
+    });
+  } catch (error) {
+    console.error("setAllowedPairs error:", error);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
   }
 };

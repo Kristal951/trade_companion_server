@@ -3,7 +3,7 @@ import { instrumentDefinitions, normalizePlan } from "../utils/index.js";
 import { fetchMarketContext } from "./marketDataServices.js";
 import { isSignalEligiblePlan } from "../utils/signal.js";
 
-const GENERATION_MODEL = "gemini-2.5-flash";
+const GENERATION_MODEL = "gemini-3-flash-preview";
 
 const TARGET_INSTRUMENTS = [
   "EUR/USD",
@@ -54,19 +54,40 @@ const safeParseAIResponse = (text) => {
 };
 
 const withRetry = async (fn, retries = 3, baseDelay = 2000) => {
-  try {
-    return await fn();
-  } catch (error) {
-    if (
-      retries > 0 &&
-      (error?.status === 429 ||
-        error?.message?.includes("429") ||
-        error?.status === "RESOURCE_EXHAUSTED")
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, baseDelay));
-      return withRetry(fn, retries - 1, baseDelay * 2);
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = i === retries - 1;
+      const status = error?.status || error?.response?.status;
+      const message = error?.message || "";
+
+      const is429 =
+        status === 429 ||
+        message.includes("429") ||
+        message.includes("RESOURCE_EXHAUSTED");
+      const is503 =
+        status === 503 ||
+        message.includes("503") ||
+        message.includes("UNAVAILABLE");
+      const isNetworkError =
+        error.code === "ECONNRESET" || message.includes("fetch failed");
+
+      if ((is429 || is503 || isNetworkError) && !isLastAttempt) {
+        const jitter = Math.random() * 1000;
+        const delay = baseDelay * Math.pow(2, i) + jitter;
+
+        console.warn(
+          `[RETRY ${i + 1}/${retries}] Reason: ${is429 ? "Quota" : is503 ? "Overloaded" : "Network"}. ` +
+            `Retrying in ${Math.round(delay)}ms...`,
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw error;
     }
-    throw error;
   }
 };
 
@@ -117,18 +138,31 @@ export async function scanForSignals({ userPlan, userSettings }) {
   if (process.env.SIGNAL_SCAN_TEST_MODE === "true") {
     return {
       signalFound: true,
-      instrument: "XAU/USD",
+      instrument: "BTC/USD",
       type: "BUY",
-      entryPrice: 2300,
-      stopLoss: 2290,
-      takeProfit1: 2315,
+      entryPrice: 72938.38,
+      stopLoss: 72407.00,
+      takeProfits: [75000],
+      lotSize: 0.02,
       confidence: 95,
-      reasoning: "Test mode signal",
-      technicalReasoning: "Forced signal for testing",
-      lotSize: 0.01,
-      riskAmount: 10,
+      reasoning: "Standardized test signal with correct directionality",
+      technicalReasoning:
+        "Testing SELL logic with relative SL/TP distance scaling",
     };
   }
+
+  // signalFound: true,
+  //   instrument: "EUR/USD",
+  //   type: "SELL",
+  //   entryPrice: 1.085,
+  //   stopLoss: 1.087,
+  //   takeProfits: [1.082],
+  //   lotSize: 0.01,
+  //   confidence: 95,
+  //   reasoning: "Standardized test signal with correct directionality",
+  //   technicalReasoning:
+  //     "Testing SELL logic with relative SL/TP distance scaling",
+  // };
 
   if (!isSignalEligiblePlan(normalizedPlan)) {
     return { signalFound: false, reason: "Plan not eligible" };

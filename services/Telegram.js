@@ -4,7 +4,7 @@ import TelegramBot from "node-telegram-bot-api";
 import crypto from "crypto";
 import Notification from "../models/Notification.js";
 
-const APP_URL = process.env.NGROK_URL || process.env.CLIENT_URL;
+const APP_URL = process.env.FRONTEND_URI_2;
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -84,8 +84,29 @@ ${escapeHtml(message || "You have a new notification.")}
 };
 
 export const telegramBot = token
-  ? new TelegramBot(token, { polling: process.env.NODE_ENV !== "production" })
+  ? new TelegramBot(token, { polling: false })
   : null;
+
+export const startTelegramBot = () => {
+  if (!telegramBot) {
+    console.log("⚠️ Telegram Bot token not found. Skipping start.");
+    return;
+  }
+
+  // Check if the bot is already running
+  if (telegramBot.isPolling()) {
+    console.log("ℹ️ Telegram Bot is already polling. No action needed.");
+    return;
+  }
+
+  try {
+    registerTelegramHandlers();
+    telegramBot.startPolling();
+    console.log("✅ Telegram Bot started successfully.");
+  } catch (error) {
+    console.error("❌ Failed to start Telegram Bot:", error.message);
+  }
+};
 
 export const registerTelegramHandlers = () => {
   if (!telegramBot) return;
@@ -224,19 +245,15 @@ ${escapeHtml(cleanContent || "A new update has been shared.")}
 };
 
 export const sendTelegramMessage = async (chatId, text, options = {}) => {
-  if (!TELEGRAM_BOT_TOKEN) {
-    throw new Error("Missing TELEGRAM_BOT_TOKEN");
+  if (!telegramBot) {
+    throw new Error("Missing Telegram Bot Instance");
   }
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-
-  const { data } = await axios.post(url, {
-    chat_id: chatId,
-    text: trimText(text, TELEGRAM_MESSAGE_LIMIT),
-    ...options,
-  });
-
-  return data;
+  return await telegramBot.sendMessage(
+    chatId,
+    trimText(text, TELEGRAM_MESSAGE_LIMIT),
+    { parse_mode: "HTML", ...options },
+  );
 };
 
 export const sendTelegramPhoto = async (

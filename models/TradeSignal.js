@@ -2,14 +2,12 @@ import mongoose from "mongoose";
 
 const TradeSignalSchema = new mongoose.Schema(
   {
-    // --- Ownership ---
     userId: {
       type: String,
       required: true,
       index: true,
     },
 
-    // --- Trade Identity ---
     instrument: {
       type: String,
       required: true,
@@ -28,23 +26,21 @@ const TradeSignalSchema = new mongoose.Schema(
       default: true,
     },
 
-    // --- Entry Setup ---
     entryPrice: {
       type: Number,
-      required: true,
+      required: false,
     },
 
     stopLoss: {
       type: Number,
-      required: true,
+      required: false,
     },
 
     takeProfits: {
       type: [Number],
-      required: true,
+      required: false,
     },
 
-    // --- Execution Tracking ---
     executedPrice: {
       type: Number,
     },
@@ -53,7 +49,6 @@ const TradeSignalSchema = new mongoose.Schema(
       type: Date,
     },
 
-    // --- Closure Tracking ---
     closedPrice: {
       type: Number,
     },
@@ -68,50 +63,49 @@ const TradeSignalSchema = new mongoose.Schema(
     },
 
     profitLoss: {
-      type: Number, // $ result
+      type: Number,
     },
 
-    // ✅ WIN / LOSS FLAG
     isWin: {
       type: Boolean,
-      default: null, // null until trade closes
+      default: null,
       index: true,
     },
 
-    // --- Signal Quality ---
     confidence: {
       type: Number,
-      required: true,
+      required: false,
     },
 
     reasoning: {
       type: String,
-      required: true,
+      required: false,
     },
 
     technicalReasoning: {
       type: String,
     },
 
-    // --- Risk ---
+    orderId: {
+      type: String,
+      index: true,
+    },
+
+    cTraderPositionId: {
+      type: String,
+      index: true,
+    },
+
     lotSize: Number,
     riskAmount: Number,
 
-    // --- Lifecycle Status ---
     status: {
       type: String,
-      enum: [
-        "NEW", // Generated
-        "EXECUTED", // Trade opened
-        "CLOSED", // Trade finished
-        "EXPIRED", // Signal invalid
-        "CANCELLED", // User cancelled
-      ],
+      enum: ["NEW", "EXECUTED", "PROCESSING", "CLOSED", "EXPIRED", "CANCELLED"],
       default: "NEW",
       index: true,
     },
 
-    // --- Extras ---
     meta: {
       type: mongoose.Schema.Types.Mixed,
     },

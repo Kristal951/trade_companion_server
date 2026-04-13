@@ -6,7 +6,8 @@ import { getDailySignalLimit, isSignalEligiblePlan } from "../utils/signal.js";
 import { normalizePlan } from "../utils/index.js";
 import { createAndSendTelegramNotification } from "../services/Telegram.js";
 import { createAndSendNotification } from "../services/Notification.js";
-import { io } from "../server.js";
+import { dispatchSignalToUser } from "../services/signalDispatcher.js";
+import { getIO } from "../sockets/io.js";
 
 const DUPLICATE_WINDOW_MINUTES = 45;
 
@@ -71,42 +72,30 @@ export async function runSignalScanJob() {
       id: String(user._id),
       email: user.email,
       subscribedPlan: user.subscribedPlan,
-      isSubscribed: user.isSubscribed,
-      emailVerified: user.emailVerified,
-      pushEnabled: !!user?.notificationSettings?.push,
-      telegramEnabled: !!user?.notificationSettings?.telegram,
-      telegramLinked: !!user?.telegram?.chatId,
     });
 
     try {
       const normalizedPlan = normalizePlan(user.subscribedPlan);
-      console.log("Normalized plan:", normalizedPlan);
 
       if (!isSignalEligiblePlan(normalizedPlan)) {
-        console.log("Skipped user: ineligible plan");
         summary.ineligibleSkipped += 1;
         continue;
       }
 
       const dailyLimit = getDailySignalLimit(normalizedPlan);
-      console.log("Daily limit:", dailyLimit);
 
       if (dailyLimit <= 0) {
-        console.log("Skipped user: daily limit is 0");
         summary.ineligibleSkipped += 1;
         continue;
       }
 
-      console.log("Checking signals sent today...");
       const signalsSentToday = await TradeSignal.countDocuments({
         userId: String(user._id),
         createdAt: { $gte: startOfToday },
       });
 
-      console.log("Signals sent today:", signalsSentToday);
-
       if (signalsSentToday >= dailyLimit) {
-        console.log("Skipped user: daily limit reached");
+        console.log("daily signal limit reached");
         summary.dailyLimitSkipped += 1;
         continue;
       }
@@ -117,28 +106,15 @@ export async function runSignalScanJob() {
         currency: String(user.tradeSettings?.currency || "USD"),
       };
 
-      console.log("User settings for scan:", settings);
-      console.log("Calling scanForSignals...");
-
       const result = await scanForSignals({
         userPlan: normalizedPlan,
         userSettings: settings,
       });
 
-      console.log("scanForSignals result:", result);
-
-      if (!result.signalFound) {
-        console.log("No signal found for user");
-        continue;
-      }
+      if (!result.signalFound) continue;
 
       const duplicateSince = new Date(
         Date.now() - DUPLICATE_WINDOW_MINUTES * 60 * 1000,
-      );
-
-      console.log(
-        "Checking recent duplicate since:",
-        duplicateSince.toISOString(),
       );
 
       const recentDuplicate = await TradeSignal.findOne({
@@ -149,25 +125,8 @@ export async function runSignalScanJob() {
         createdAt: { $gte: duplicateSince },
       }).lean();
 
-      console.log("Recent duplicate exists:", !!recentDuplicate);
-
       if (recentDuplicate) {
-        console.log("Skipped user: recent duplicate signal found");
         summary.duplicatesSkipped += 1;
-        continue;
-      }
-
-      console.log("Re-checking signals sent today before create...");
-      const freshSignalsSentToday = await TradeSignal.countDocuments({
-        userId: String(user._id),
-        createdAt: { $gte: startOfToday },
-      });
-
-      console.log("Fresh signals sent today:", freshSignalsSentToday);
-
-      if (freshSignalsSentToday >= dailyLimit) {
-        console.log("Skipped user: daily limit reached on re-check");
-        summary.dailyLimitSkipped += 1;
         continue;
       }
 
@@ -181,13 +140,9 @@ export async function runSignalScanJob() {
         dayKey,
       });
 
-      console.log("Generated signal dedupeKey:", signalDedupeKey);
-
       let createdSignal;
 
       try {
-        console.log("Creating TradeSignal...");
-
         createdSignal = await TradeSignal.create({
           userId: String(user._id),
           instrument: result.instrument,
@@ -195,7 +150,7 @@ export async function runSignalScanJob() {
           isAI: true,
           entryPrice: result.entryPrice,
           stopLoss: result.stopLoss,
-          takeProfits: [result.takeProfit1],
+          takeProfits: result.takeProfits,
           confidence: result.confidence,
           reasoning: result.reasoning,
           technicalReasoning: result.technicalReasoning,
@@ -207,24 +162,13 @@ export async function runSignalScanJob() {
             plan: normalizedPlan,
             originalPlan: user.subscribedPlan,
             generatedAtUtc: new Date().toUTCString(),
-            source: "hybrid-96-candle-scan",
           },
-        });
-
-        console.log("TradeSignal created:", {
-          id: String(createdSignal._id),
-          instrument: createdSignal.instrument,
-          type: createdSignal.type,
-          status: createdSignal.status,
         });
       } catch (error) {
         if (error?.code === 11000) {
-          console.log("Duplicate key error on TradeSignal.create, skipping");
           summary.duplicatesSkipped += 1;
           continue;
         }
-
-        console.error("TradeSignal.create failed:", error);
         throw error;
       }
 
@@ -246,9 +190,65 @@ Confidence: ${createdSignal.confidence}%
 
       const notificationDedupeKey = `signal:${user._id}:${createdSignal._id}`;
 
-      if (user?.notificationSettings?.push) {
-        console.log("Sending in-app/realtime notification...");
+      // =========================
+      // AUTO TRADING EXECUTION
+      // =========================
+      try {
+        if (!user?.cTraderConfig?.autoTradeEnabled) {
+          console.log("Auto trading disabled for user");
+        } else {
+          console.log("🚀 Executing trade...");
 
+          await TradeSignal.findByIdAndUpdate(createdSignal._id, {
+            status: "QUEUED",
+          });
+
+          const signalPayload = {
+            _id: createdSignal._id,
+            userId: String(user._id),
+            instrument: createdSignal.instrument,
+            type: createdSignal.type,
+            entryPrice: createdSignal.entryPrice,
+            stopLoss: createdSignal.stopLoss,
+            takeProfits: createdSignal.takeProfits ?? null,
+            volume: createdSignal.lotSize,
+            riskAmount: createdSignal.riskAmount,
+            lotSize: createdSignal.lotSize
+          };
+
+          const executionResult = await dispatchSignalToUser(
+            String(user._id),
+            signalPayload,
+          );
+
+          if (executionResult?.success) {
+            console.log(
+              `[QUEUED] user=${user._id} signal=${createdSignal._id}`,
+            );
+          } else {
+            throw new Error(executionResult?.error || "Execution failed");
+          }
+        }
+      } catch (err) {
+        console.error(
+          `[AUTO TRADE ERROR] user=${user._id} signal=${createdSignal._id}`,
+          err,
+        );
+
+        await TradeSignal.findByIdAndUpdate(createdSignal._id, {
+          status: "FAILED",
+          executionDetails: {
+            error: err.message,
+          },
+        });
+      }
+
+      // =========================
+      // NOTIFICATIONS
+      // =========================
+      if (user?.notificationSettings?.push) {
+        const io = getIO();
+        
         await createAndSendNotification({
           io,
           recipient: user._id,
@@ -264,20 +264,12 @@ Confidence: ${createdSignal.confidence}%
           },
           meta: {
             signalId: String(createdSignal._id),
-            instrument: createdSignal.instrument,
-            signalType: createdSignal.type,
           },
           dedupeKey: `${notificationDedupeKey}:inapp`,
         });
-
-        console.log("In-app/realtime notification sent");
-      } else {
-        console.log("Skipped in-app/realtime notification: push disabled");
       }
 
       if (user?.notificationSettings?.telegram && user?.telegram?.chatId) {
-        console.log("Sending Telegram notification...");
-
         await createAndSendTelegramNotification({
           recipient: user._id,
           title,
@@ -286,22 +278,12 @@ Confidence: ${createdSignal.confidence}%
           priority: "high",
           meta: {
             signalId: String(createdSignal._id),
-            instrument: createdSignal.instrument,
-            signalType: createdSignal.type,
           },
           dedupeKey: `${notificationDedupeKey}:telegram`,
-        });
-
-        console.log("Telegram notification sent");
-      } else {
-        console.log("Skipped Telegram notification:", {
-          telegramEnabled: !!user?.notificationSettings?.telegram,
-          telegramLinked: !!user?.telegram?.chatId,
         });
       }
 
       summary.signalsCreated += 1;
-      console.log("Signal created successfully for user");
     } catch (error) {
       summary.failures += 1;
       console.error(`Signal scan failed for user ${user._id}:`, error);

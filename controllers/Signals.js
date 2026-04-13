@@ -492,8 +492,6 @@ export const getActiveSignals = async (req, res) => {
      TradeSignal.find({ userId: userId })
     ]);
 
-    console.log(signals, totalSigs)
-
     res.json({
       data: signals,
       pagination: {

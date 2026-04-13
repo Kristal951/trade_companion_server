@@ -62,6 +62,18 @@ export const registerNotificationSocket = (io) => {
       );
     });
 
+    socket.on("subscribe_instrument", (instrument) => {
+      socket.join(`instrument:${instrument}`);
+      startInstrumentStream(instrument);
+
+      console.log(`📡 ${userId} subscribed to ${instrument}`);
+    });
+
+    socket.on("unsubscribe_instrument", (instrument) => {
+      socket.leave(`instrument:${instrument}`);
+      console.log(`❌ ${userId} unsubscribed from ${instrument}`);
+    });
+
     socket.on("disconnect", (reason) => {
       console.log(`❌ Socket disconnected: ${socket.id}`);
       console.log(`Reason: ${reason}`);

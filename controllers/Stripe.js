@@ -8,9 +8,10 @@ import {
   normalizePlan,
   PLAN_NAME,
 } from "../utils/index.js";
-import { io } from "../server.js";
 import { createAndSendNotification } from "../services/Notification.js";
 import { createAndSendTelegramNotification } from "../services/Telegram.js";
+import { updateSubscriberGrowth } from "./Mentor.js";
+import { getIO } from "../sockets/io.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-08-27.basil",
@@ -393,6 +394,11 @@ const activateMentorSubscriptionFromCheckout = async ({
     subscribedDate: new Date(),
   });
 
+  await updateSubscriberGrowth({
+    mentorId,
+    increment: 1,
+  });
+
   await notifyBilling({
     io,
     recipient: userId,
@@ -551,10 +557,17 @@ const handleMentorInvoicePaid = async ({
   subscriber.status = "Active";
   subscriber.lastPaidAt = new Date();
   if (currentPeriodEnd) subscriber.currentPeriodEnd = currentPeriodEnd;
+  const mentorId = mentor.id;
+  console.log(mentorId);
+
+  await updateSubscriberGrowth({
+    mentorId,
+    increment: 1,
+  });
 
   await mentor.save();
 
-  const notRes = await notifyBilling({
+  await notifyBilling({
     io,
     recipient: subscriber.userId,
     title: "Mentor Subscription Renewed",
@@ -568,7 +581,6 @@ const handleMentorInvoicePaid = async ({
     }),
     dedupeKey: `billing:mentor_invoice_paid:${subscriptionId}:${invoice.id}`,
   });
-  console.log(notRes, "notRes");
 };
 
 const handleAppInvoicePaid = async ({ event, io, invoice, subscriptionId }) => {
@@ -921,6 +933,13 @@ export const createCheckout = async (req, res) => {
 
 export const makeStripeWebhook = () => {
   console.log("🔥 Stripe webhook hit");
+  let io;
+
+  try {
+    io = getIO();
+  } catch (err) {
+    console.warn("Socket.IO not ready, continuing without realtime updates");
+  }
   return async (req, res) => {
     const sig = req.headers["stripe-signature"];
 

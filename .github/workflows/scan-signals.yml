@@ -2,7 +2,7 @@ name: Scan Signals
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7,22,37,52 * * * *" # every 15 mins (staggered)
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +20,19 @@ jobs:
           SCAN_URL: ${{ secrets.SCAN_SIGNALS_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl --fail --show-error --silent \
+          echo "🚀 Starting signal scan at $(date)"
+
+          RESPONSE=$(curl --fail --show-error --silent \
             -X POST "$SCAN_URL" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json")
+
+          echo "✅ Scan completed"
+          echo "$RESPONSE"
+
+      - name: Fail if response is empty
+        run: |
+          if [ -z "$RESPONSE" ]; then
+            echo "❌ Empty response from server"
+            exit 1
+          fi

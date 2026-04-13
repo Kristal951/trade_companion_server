@@ -26,6 +26,15 @@ export const CTraderSchema = new mongoose.Schema(
       select: false,
       default: null,
     },
+    allowedPairs: {
+      type: [String],
+      default: [],
+    },
+    cachedBalance: { type: Number, default: 0 },
+    cachedEquity: { type: Number, default: 0 },
+    cachedMargin: { type: Number, default: 0 },
+    lastSyncedAt: { type: Date, default: null },
+    autoSyncBalance: { type: Boolean, default: true },
 
     acquiredAt: { type: Date, default: null },
     expiresAt: { type: Date, default: null },
@@ -41,8 +50,8 @@ export const CTraderSchema = new mongoose.Schema(
 
 const TradeSettingsSchema = new mongoose.Schema(
   {
-    balance: { type: String, default: "0" },
-    risk: { type: String, default: "1" },
+    balance: { type: Number, default: 0 },
+    risk: { type: Number, default: 1 },
     currency: { type: String, default: "USD" },
   },
   { _id: false },
@@ -52,6 +61,18 @@ export const NotificationSettingsSchema = new mongoose.Schema({
   email: { type: Boolean, default: false },
   push: { type: Boolean, default: true },
   telegram: { type: Boolean, default: false },
+});
+
+export const tradeHistorySchema = new mongoose.Schema({
+  // id: string; // Unique ID for the trade
+  status: { type: String, enum: ["active", "win", "loss"] },
+  pnl: { type: Number },
+  currentPrice: { type: Number },
+  dateTaken: { type: Date },
+  dateClosed: { type: Date },
+  initialEquity: { type: Number },
+  finalEquity: { type: Number },
+  takeProfit: [{ type: Number }],
 });
 
 const UserSchema = new mongoose.Schema(
@@ -121,7 +142,6 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-UserSchema.index({ email: 1 });
 UserSchema.index({ lastLoginAt: -1 });
 UserSchema.index({ "cTraderConfig.accountId": 1 });
 UserSchema.index({ stripeCustomerId: 1 });

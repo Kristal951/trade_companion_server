@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import dotenv from 'dotenv'
+dotenv.config()
 
 const { TOKEN_ENC_KEY } = process.env;
 if (!TOKEN_ENC_KEY) throw new Error("Missing env: TOKEN_ENC_KEY");

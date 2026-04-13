@@ -15,6 +15,9 @@ import geoip from "geoip-lite";
 import ms from "ms";
 import Session from "../models/Session.js";
 import { getClientIp } from "../utils/Token.js";
+import MentorModel from "../models/Mentor.js";
+import MentorPost from "../models/MentorPost.js";
+import mongoose from "mongoose";
 
 export const SignUpUser = async (req, res) => {
   try {
@@ -653,5 +656,53 @@ export const getMyProfile = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "couldn't fetch your profile" });
+  }
+};
+export const getUserMentorsPosts = async (req, res) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const mentors = await MentorModel.find({
+      "subscribers.userId": new mongoose.Types.ObjectId(userId),
+      "subscribers.status": "Active",
+    }).select("_id name avatar email");
+
+    if (!mentors.length) {
+      return res.status(200).json({
+        success: true,
+        posts: [],
+      });
+    }
+
+    const mentorIds = mentors.map((m) => m._id);
+
+    const posts = await MentorPost.find({
+      mentor: { $in: mentorIds },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const mentorMap = new Map(mentors.map((m) => [String(m._id), m]));
+
+    const enrichedPosts = posts.map((post) => ({
+      ...post,
+      mentor: mentorMap.get(String(post.mentor)) || null,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: enrichedPosts.length,
+      posts: enrichedPosts,
+    });
+  } catch (error) {
+    console.error("getUserMentorsPosts error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch mentor posts",
+    });
   }
 };

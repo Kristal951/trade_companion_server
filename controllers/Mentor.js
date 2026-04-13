@@ -7,8 +7,9 @@ import Stripe from "stripe";
 import UserModel from "../models/User.js";
 import MentorModel from "../models/Mentor.js";
 import { createAndSendManyNotifications } from "../services/Notification.js";
-import { io } from "../server.js";
+
 import { sendMentorPostTelegramAlerts } from "../services/Telegram.js";
+import { getIO } from "../sockets/io.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -215,12 +216,14 @@ export const createMentorPost = async (req, res) => {
         dedupeKey: `mentor_post:${post._id}:user:${subscriber.userId}`,
       }));
 
+      const io = getIO();
+
       await createAndSendManyNotifications({
         io,
         payloads,
       });
 
-       await sendMentorPostTelegramAlerts({
+      await sendMentorPostTelegramAlerts({
         subscriberIds: activeSubscribers.map((sub) => sub.userId),
         mentor,
         post,
@@ -597,4 +600,37 @@ export const createMentorCheckout = async (req, res) => {
     console.error("createMentorCheckout error:", err);
     return res.status(500).json({ message: err.message });
   }
+};
+const getMonthKey = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export const updateSubscriberGrowth = async ({ mentorId, increment = 1 }) => {
+  if (!mentorId) throw new Error("mentorId is required");
+
+  const month = getMonthKey();
+
+  const mentor = await MentorModel.findById(mentorId);
+  if (!mentor) throw new Error("Mentor not found");
+
+  if (!mentor.subscriberGrowth) {
+    mentor.subscriberGrowth = [];
+  }
+
+  const existing = mentor.subscriberGrowth.find((g) => g.month === month);
+
+  if (existing) {
+    existing.subscribers += increment;
+    if (existing.subscribers < 0) existing.subscribers = 0;
+  } else {
+    mentor.subscriberGrowth.push({
+      month,
+      subscribers: Math.max(increment, 0),
+    });
+  }
+
+  await mentor.save();
+
+  return mentor.subscriberGrowth;
 };
