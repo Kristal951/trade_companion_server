@@ -1,4 +1,4 @@
-import { redis } from "../queues/ctrader.js";
+
 import { ctraderClient } from "./ctraderClient.js";
 
 const SYMBOLS_CACHE_KEY = (accountId) => `ctrader:${accountId}:symbols:all`;

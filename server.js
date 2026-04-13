@@ -36,31 +36,31 @@ const server = http.createServer(app);
 const PORT = process.env.PORT_NUMBER || 5000;
 
 /* =========================
-   SOCKET.IO INIT (SAFE)
+   SOCKET.IO INIT
 ========================= */
 initIO(server);
 
 /* =========================
    CORS CONFIG
 ========================= */
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  process.env.FRONTEND_URI_1,
-  process.env.FRONTEND_URI_2,
-  process.env.FRONTEND_URI_3,
-  process.env.FRONTEND_BASE_URL,
-].filter(Boolean);
 
-const io = getIO();
+const allowedOrigins = new Set(
+  [
+    process.env.FRONTEND_URI_1,
+    process.env.FRONTEND_URI_2,
+    process.env.FRONTEND_URI_3,
+  ].filter(Boolean),
+);
 
 const corsOptions = {
   origin: (origin, callback) => {
-    console.log("CORS origin:", origin);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("CORS origin:", origin);
+    }
 
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.has(origin)) {
       return callback(null, true);
     }
 
@@ -72,6 +72,7 @@ const corsOptions = {
 /* =========================
    BULL BOARD
 ========================= */
+
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath("/admin/queues");
 
@@ -81,23 +82,37 @@ createBullBoard({
 });
 
 /* =========================
+   STRIPE WEBHOOK (MUST BE FIRST)
+========================= */
+
+app.use(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+);
+
+/* =========================
    MIDDLEWARE
 ========================= */
+
 app.set("trust proxy", true);
-app.use(cookieParser());
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+
+app.use(cookieParser());
+app.use(express.json({ limit: "10mb" }));
+
+/* =========================
+   BASIC ROUTE
+========================= */
 
 app.get("/", (_req, res) => {
   res.send("🚀 Server is running...");
 });
 
-app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
-app.use(express.json({ limit: "10mb" }));
-
 /* =========================
    ROUTES
 ========================= */
+
 app.use("/api/user", userRoutes);
 app.use("/api/mentor", mentorRoutes);
 app.use("/api/stripe", StripeRoutes);
@@ -110,8 +125,9 @@ app.use("/api/market", marketRoutes);
 app.use("/api/trades", TradeRoutes);
 
 /* =========================
-   BULL BOARD AUTH
+   BULL BOARD AUTH (FIXED ORDER)
 ========================= */
+
 app.use("/admin/queues", (req, res, next) => {
   const auth = {
     login: process.env.ADMIN_USER || "admin",
@@ -128,7 +144,7 @@ app.use("/admin/queues", (req, res, next) => {
   }
 
   res.set("WWW-Authenticate", 'Basic realm="401"');
-  res.status(401).send("Authentication required.");
+  return res.status(401).send("Authentication required.");
 });
 
 app.use("/admin/queues", serverAdapter.getRouter());
@@ -136,6 +152,7 @@ app.use("/admin/queues", serverAdapter.getRouter());
 /* =========================
    ERROR HANDLING
 ========================= */
+
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
@@ -154,18 +171,24 @@ app.use((err, req, res, next) => {
 });
 
 /* =========================
-   START SERVER (FIXED FLOW)
+   START SERVER (SAFE ORDER)
 ========================= */
+
 const startServer = async () => {
   try {
+    console.log("🚀 Starting server...");
+
     await connectDB();
     console.log("✅ Database connected");
 
     await initRedis();
     console.log("✅ Redis initialized");
 
-    startActiveTradeStream();
+    initIO(server);
 
+    const io = getIO();
+
+    startActiveTradeStream();
     registerNotificationSocket(io);
 
     startTelegramBot();

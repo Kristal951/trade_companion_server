@@ -1,26 +1,39 @@
 import { Queue, QueueEvents } from "bullmq";
+import IORedis from "ioredis";
 
 // =========================
-// ✅ Redis connection (Railway-safe)
+// ENV CHECK
 // =========================
-const connection = {
-  url: process.env.REDIS_URL,
-  maxRetriesPerRequest: null,
-};
 
-// hard fail if missing (prevents silent localhost fallback)
 if (!process.env.REDIS_URL) {
   throw new Error("❌ REDIS_URL is missing in environment variables");
 }
 
-// optional debug
-console.log("🔥 BullMQ REDIS_URL =", process.env.REDIS_URL);
+// =========================
+// REDIS CONFIG
+// =========================
+
+const redisOptions = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+};
 
 // =========================
-// ✅ Queue
+// SINGLE RESPONSIBILITY CONNECTIONS
 // =========================
+
+// Queue connection
+const queueConnection = new IORedis(process.env.REDIS_URL, redisOptions);
+
+// Events connection (must be separate)
+const eventsConnection = new IORedis(process.env.REDIS_URL, redisOptions);
+
+// =========================
+// QUEUE
+// =========================
+
 export const ctraderQueue = new Queue("ctrader-trades", {
-  connection,
+  connection: queueConnection,
   defaultJobOptions: {
     attempts: 3,
     backoff: {
@@ -33,23 +46,40 @@ export const ctraderQueue = new Queue("ctrader-trades", {
 });
 
 // =========================
-// ✅ Queue Events
+// QUEUE EVENTS
 // =========================
-export const ctraderQueueEvents = new QueueEvents("ctrader-trades", {
-  connection,
-});
+
+export const ctraderQueueEvents = new QueueEvents(
+  "ctrader-trades",
+  {
+    connection: eventsConnection,
+  },
+);
 
 // =========================
-// Logs
+// SAFETY EVENTS (IMPORTANT)
 // =========================
-ctraderQueueEvents.on("completed", ({ jobId }) => {
-  console.log(`[QUEUE COMPLETED] jobId=${jobId}`);
+
+ctraderQueueEvents.on("connect", () => {
+  console.log("🔌 QueueEvents connected");
 });
 
-ctraderQueueEvents.on("failed", ({ jobId, failedReason }) => {
-  console.error(`[QUEUE FAILED] jobId=${jobId} reason=${failedReason}`);
+ctraderQueueEvents.on("ready", () => {
+  console.log("✅ QueueEvents ready");
+});
+
+ctraderQueueEvents.on("error", (err) => {
+  console.error("❌ QueueEvents error:", err);
 });
 
 ctraderQueueEvents.on("stalled", ({ jobId }) => {
   console.warn(`[QUEUE STALLED] jobId=${jobId}`);
+});
+
+ctraderQueueEvents.on("failed", ({ jobId, failedReason }) => {
+  console.error(`[QUEUE FAILED] jobId=${jobId}`, failedReason);
+});
+
+ctraderQueueEvents.on("completed", ({ jobId }) => {
+  console.log(`[QUEUE COMPLETED] jobId=${jobId}`);
 });
