@@ -1,10 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import http from "http";
-import { Server } from "socket.io";
 
 import userRoutes from "./routes/User.js";
 import mentorRoutes from "./routes/Mentor.js";
@@ -14,8 +12,21 @@ import signalRoutes from "./routes/Signals.js";
 import ctraderRoutes from "./routes/Ctrader.js";
 import notificationRoutes from "./routes/Notification.js";
 import telegramRoutes from "./routes/Telegram.js";
+import marketRoutes from "./routes/market.js";
+import TradeRoutes from "./routes/trades.js";
+
 import { registerNotificationSocket } from "./sockets/NotificationSocket.js";
-import { registerTelegramHandlers } from "./services/Telegram.js";
+import { startTelegramBot } from "./services/Telegram.js";
+
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
+import { ctraderQueue } from "./queues/ctrader.js";
+
+import { initRedis } from "./utils/redis.js";
+import { connectDB } from "./utils/connectDB.js";
+import { startActiveTradeStream } from "./services/activeTradeStream.js";
+import { initIO, getIO } from "./sockets/io.js";
 
 dotenv.config();
 
@@ -24,6 +35,14 @@ const server = http.createServer(app);
 
 const PORT = process.env.PORT_NUMBER || 5000;
 
+/* =========================
+   SOCKET.IO INIT (SAFE)
+========================= */
+initIO(server);
+
+/* =========================
+   CORS CONFIG
+========================= */
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -33,15 +52,7 @@ const allowedOrigins = [
   process.env.FRONTEND_BASE_URL,
 ].filter(Boolean);
 
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ Database connected successfully");
-  } catch (error) {
-    console.error("❌ Error connecting to MongoDB:", error.message);
-    process.exit(1);
-  }
-};
+const io = getIO();
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -56,13 +67,23 @@ const corsOptions = {
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-user-id"],
-  optionsSuccessStatus: 204,
 };
 
-app.set("trust proxy", true);
+/* =========================
+   BULL BOARD
+========================= */
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath("/admin/queues");
 
+createBullBoard({
+  queues: [new BullMQAdapter(ctraderQueue)],
+  serverAdapter,
+});
+
+/* =========================
+   MIDDLEWARE
+========================= */
+app.set("trust proxy", true);
 app.use(cookieParser());
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
@@ -74,6 +95,9 @@ app.get("/", (_req, res) => {
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
 app.use(express.json({ limit: "10mb" }));
 
+/* =========================
+   ROUTES
+========================= */
 app.use("/api/user", userRoutes);
 app.use("/api/mentor", mentorRoutes);
 app.use("/api/stripe", StripeRoutes);
@@ -82,7 +106,36 @@ app.use("/api/ctrader", ctraderRoutes);
 app.use("/api/plans", planRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/telegram", telegramRoutes);
+app.use("/api/market", marketRoutes);
+app.use("/api/trades", TradeRoutes);
 
+/* =========================
+   BULL BOARD AUTH
+========================= */
+app.use("/admin/queues", (req, res, next) => {
+  const auth = {
+    login: process.env.ADMIN_USER || "admin",
+    password: process.env.ADMIN_PASS || "kristal_951",
+  };
+
+  const b64auth = (req.headers.authorization || "").split(" ")[1] || "";
+  const [login, password] = Buffer.from(b64auth, "base64")
+    .toString()
+    .split(":");
+
+  if (login === auth.login && password === auth.password) {
+    return next();
+  }
+
+  res.set("WWW-Authenticate", 'Basic realm="401"');
+  res.status(401).send("Authentication required.");
+});
+
+app.use("/admin/queues", serverAdapter.getRouter());
+
+/* =========================
+   ERROR HANDLING
+========================= */
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
@@ -100,23 +153,30 @@ app.use((err, req, res, next) => {
   });
 });
 
-export const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    credentials: true,
-  },
-});
-app.set("io", io);
-
-registerNotificationSocket(io);
-registerTelegramHandlers();
-
+/* =========================
+   START SERVER (FIXED FLOW)
+========================= */
 const startServer = async () => {
-  await connectDB();
+  try {
+    await connectDB();
+    console.log("✅ Database connected");
 
-  server.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
-  });
+    await initRedis();
+    console.log("✅ Redis initialized");
+
+    startActiveTradeStream();
+
+    registerNotificationSocket(io);
+
+    startTelegramBot();
+
+    server.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Startup failed:", err.message);
+    process.exit(1);
+  }
 };
 
 startServer();

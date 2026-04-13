@@ -74,7 +74,6 @@ const NotificationSchema = new mongoose.Schema(
     dedupeKey: {
       type: String,
       default: null,
-      index: true,
       sparse: true,
     },
 
