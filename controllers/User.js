@@ -2,8 +2,9 @@ import bcrypt from "bcryptjs"; // or 'bcrypt' if using native
 import UserModel from "../models/User.js";
 import {
   generateVerificationToken,
-  sendForgotPasswordLinkWithResend,
-  sendVerificationEmailWithResend,
+  sendVerificationEmail,
+  // sendForgotPasswordLinkWithResend,
+  // sendVerificationEmailWithResend,
   verifyGoogleToken,
 } from "../utils/index.js";
 import jwt from "jsonwebtoken";
@@ -72,9 +73,10 @@ export const SignUpUser = async (req, res) => {
     );
     console.log(code);
 
-    await sendVerificationEmailWithResend(emailNorm, newUser.name, code);
+    await sendVerificationEmail({ to: emailNorm, name: newUser.name, code });
 
     const isProd = process.env.NODE_ENV === "production";
+
     res.cookie("tradecompanion_token", token, {
       httpOnly: true,
       secure: isProd,
@@ -95,6 +97,8 @@ export const SignUpUser = async (req, res) => {
 export const verify_email_code = async (req, res) => {
   const { code, token: bodyToken } = req.body;
 
+  console.log(code, bodyToken);
+  console.log(req.body);
   if (!code) {
     return res.status(400).json({ error: "Verification code is required" });
   }
@@ -105,6 +109,8 @@ export const verify_email_code = async (req, res) => {
     (req.headers.authorization?.startsWith("Bearer ")
       ? req.headers.authorization.slice(7)
       : null);
+
+  console.log(token);
 
   if (!token) {
     return res.status(401).json({ error: "Missing verification session" });
@@ -198,20 +204,11 @@ export const verify_email_code = async (req, res) => {
       sameSite: isProd ? "none" : "lax",
     });
 
-    const safeUser = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      avatar: user.avatar,
-      emailVerified: user.emailVerified,
-      isGoogle: user.isGoogle,
-      isMentor: user.isMentor,
-      age: user.age,
-    };
+    const { password, ...userData } = user.toObject();
 
     return res.status(200).json({
       message: "Email verified successfully",
-      user: safeUser,
+      user: userData,
       accessToken,
     });
   } catch (error) {
@@ -305,7 +302,6 @@ export const LoginUser = async (req, res) => {
     });
 
     const { password, ...userData } = user.toObject();
-    console.log(userData);
 
     return res.status(200).json({
       message: "Login successful",
@@ -600,11 +596,11 @@ export const forgotPassword = async (req, res) => {
     await user.save();
 
     const resetLink = `https://dev-tradecompanion.vercel.app/auth/reset-password/${token}`;
-    await sendForgotPasswordLinkWithResend({
-      to: email,
-      subject: "Password Reset",
-      html: `<p>Click <a href="${resetLink}">here</a> to reset your password. Link expires in 1 hour.</p>`,
-    });
+    // await sendForgotPasswordLinkWithResend({
+    //   to: email,
+    //   subject: "Password Reset",
+    //   html: `<p>Click <a href="${resetLink}">here</a> to reset your password. Link expires in 1 hour.</p>`,
+    // });
 
     return res.json({ message: "Password reset email sent" });
   } catch (error) {
