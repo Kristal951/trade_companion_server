@@ -20,6 +20,7 @@ export function generateVerificationToken({ email, code, userID }) {
 }
 
 export const sendVerificationEmail = async ({ to, name, code }) => {
+  console.log(to, 'to')
   try {
     const html = emailVerificationtemplate
       .replace(/{{NAME}}/g, name)
@@ -29,9 +30,9 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
 
     try {
       await transporter.sendMail({
-        from: `"Trade Companion" <tradecompanion001@gmail.com>`,
+        from: process.env.EMAIL_FROM,
         to,
-        subject: "Your Trade Companion Verification Code",
+        subject: "Your Trade Companion Email Verification Code",
         html,
       });
     } catch (error) {
@@ -42,44 +43,44 @@ export const sendVerificationEmail = async ({ to, name, code }) => {
   }
 };
 
-export const sendVerificationEmailWithResend = async (email, name, code) => {
-  const html = emailVerificationtemplate
-    .replace(/{{NAME}}/g, name)
-    .replace(/{{CODE}}/g, code)
-    .replace(/{{YEAR}}/g, new Date().getFullYear())
-    .replace(/{{APP_NAME}}/g, "Trade Companion");
-  try {
-    const data = await resend.emails.send({
-      from: "onboarding@resend.dev",
-      to: "tradescompanion@gmail.com",
-      subject: "Verify your email",
-      html: html,
-    });
-    return data;
-  } catch (error) {
-    console.error("Resend error:", error);
-    throw new Error("Email sending failed");
-  }
-};
+// export const sendVerificationEmailWithResend = async (email, name, code) => {
+//   const html = emailVerificationtemplate
+//     .replace(/{{NAME}}/g, name)
+//     .replace(/{{CODE}}/g, code)
+//     .replace(/{{YEAR}}/g, new Date().getFullYear())
+//     .replace(/{{APP_NAME}}/g, "Trade Companion");
+//   try {
+//     const data = await resend.emails.send({
+//       from: "onboarding@resend.dev",
+//       to: "tradescompanion@gmail.com",
+//       subject: "Verify your email",
+//       html: html,
+//     });
+//     return data;
+//   } catch (error) {
+//     console.error("Resend error:", error);
+//     throw new Error("Email sending failed");
+//   }
+// };
 
-export const sendForgotPasswordLinkWithResend = async ({
-  to,
-  subject,
-  html,
-}) => {
-  try {
-    const data = await resend.emails.send({
-      from: "onboarding@resend.dev",
-      to: to,
-      subject: subject,
-      html: html,
-    });
-    return data;
-  } catch (error) {
-    console.error("Resend error:", error);
-    throw new Error("Email sending failed");
-  }
-};
+// export const sendForgotPasswordLinkWithResend = async ({
+//   to,
+//   subject,
+//   html,
+// }) => {
+//   try {
+//     const data = await resend.emails.send({
+//       from: "onboarding@resend.dev",
+//       to: to,
+//       subject: subject,
+//       html: html,
+//     });
+//     return data;
+//   } catch (error) {
+//     console.error("Resend error:", error);
+//     throw new Error("Email sending failed");
+//   }
+// };
 
 export const verifyGoogleToken = async (token) => {
   const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -101,7 +102,7 @@ const storage = multer.diskStorage({
 
 export const upload = multer({ storage });
 
-export const resend = new Resend(process.env.RESEND_API_KEY);
+// export const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const isActiveSubscriptionStatus = (status) => {
   return status === "active" || status === "trialing";

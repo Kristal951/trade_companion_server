@@ -47,10 +47,7 @@ const escapeHtml = (unsafe = "") => {
 };
 
 const buildTelegramLink = (linkTo = "") => {
-  const baseUrl =
-    process.env.NGROK_URL ||
-    process.env.PUBLIC_APP_URL ||
-    process.env.CLIENT_URL;
+  const baseUrl = process.env.FRONTEND_URI_2
 
   if (!baseUrl || !linkTo) return null;
 
