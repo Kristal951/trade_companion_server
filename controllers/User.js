@@ -73,7 +73,11 @@ export const SignUpUser = async (req, res) => {
     );
     console.log(code);
 
-    await sendVerificationEmail({ to: emailNorm, name: newUser.name, code });
+    await sendVerificationEmail({
+      to: emailNorm,
+      name: newUser.name,
+      code,
+    }).catch((err) => console.error("Background Email Error:", err));
 
     const isProd = process.env.NODE_ENV === "production";
 
