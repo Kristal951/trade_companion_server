@@ -13,10 +13,12 @@ const transporter = nodemailer.createTransport({
     pass: process.env.NO_REPLY_EMAIL_PASSWD,
   },
   tls: {
-    rejectUnauthorized: false 
+    ciphers: "SSLv3",
+    rejectUnauthorized: false,
   },
-  connectionTimeout: 10000, 
+  connectionTimeout: 10000,
   greetingTimeout: 10000,
+  socketTimeout: 20000,
 });
 
 export default transporter;
